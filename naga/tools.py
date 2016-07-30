@@ -15,10 +15,7 @@ def rreduce(fn, seq, default=None):
 
 
 def get_in(d, ks, not_found=None):
-    try:
-        return reduce(lambda x, y: x[y], ks, d)
-    except ValueError:
-        return not_found
+    return reduce(lambda x, y: x.get(y, {}), ks, d) or not_found
 
 
 def apply(fn, x):
@@ -39,19 +36,12 @@ def rest(iterable):
     return itertools.islice(iterable, 1, None)
 
 
-def unpack(fn):
-    def explode(args):
-        return fn(*args)
-
-    return explode
-
-
 def explode(*ds):
     return itertools.chain(*map(lambda d: d.items(), ds))
 
 
 def merge(*ds):
-    return dict(rreduce(fn=lambda l, _: unpack(lambda k, v: l + [(k, v)])(_),
+    return dict(rreduce(fn=lambda l, _: apply(lambda k, v: l + [(k, v)], _),
                         seq=explode(*ds),
                         default=[]))
 
@@ -65,16 +55,16 @@ def dissoc(d, *ks):
 
 
 def merge_with(fn, *ds):
-    return rreduce(fn=lambda d, x: unpack(lambda k, v:
-                                          assoc(d, k, fn(d[k], v)) if k in d else
-                                          assoc(d, k, v))(x),
+    return rreduce(fn=lambda d, x: apply(lambda k, v:
+                                         assoc(d, k, fn(d[k], v)) if k in d else
+                                         assoc(d, k, v), x),
                    seq=explode(*ds),
                    default={})
 
 
 def merge_with_default(fn, default=None, *dicts):
     _fn, _default = fn, default
-    return merge_with(_fn, rreduce(fn=lambda d, _: unpack(lambda k, v: assoc(d, k, _default))(_),
+    return merge_with(_fn, rreduce(fn=lambda d, _: apply(lambda k, v: assoc(d, k, _default), _),
                                    seq=explode(*dicts),
                                    default={}),
                       *dicts)
@@ -121,31 +111,31 @@ def supassoc_in(d, val, k, *ks):
 
 
 def keyfilter(fn, d):
-    return reduce(lambda d, _: apply(lambda k, v: assoc(d, k, v) if fn(k) else d, _), d.items(), {})
+    return reduce(lambda _d, _: apply(lambda k, v: assoc(_d, k, v) if fn(k) else _d, _), d.items(), {})
 
 
 def valfilter(fn, d):
-    return reduce(lambda d, _: apply(lambda k, v: assoc(d, k, v) if fn(v) else d, _), d.items(), {})
+    return reduce(lambda _d, _: apply(lambda k, v: assoc(_d, k, v) if fn(v) else _d, _), d.items(), {})
 
 
 def itemfilter(fn, d):
-    return reduce(lambda d, _: apply(lambda k, v: assoc(d, k, v) if fn(k, v) else d, _), d.items(), {})
+    return reduce(lambda _d, _: apply(lambda k, v: assoc(_d, k, v) if fn(k, v) else _d, _), d.items(), {})
 
 
 def valmap(fn, d):
-    return rreduce(fn=lambda d, _: unpack(lambda k, v: assoc(d, k, fn(v)))(_),
+    return rreduce(fn=lambda _d, _: apply(lambda k, v: assoc(_d, k, fn(v)), _),
                    seq=d.items(),
                    default={})
 
 
 def keymap(fn, d):
-    return rreduce(fn=lambda d, _: unpack(lambda k, v: assoc(d, fn(k), v))(_),
+    return rreduce(fn=lambda _d, _: apply(lambda k, v: assoc(_d, fn(k), v), _),
                    seq=d.items(),
                    default={})
 
 
 def itemmap(fn, d):
-    return rreduce(fn=lambda d, _: unpack(lambda k, v: assoc(d, *fn(k, v)))(_),
+    return rreduce(fn=lambda _d, _: apply(lambda k, v: assoc(_d, *fn(k, v)), _),
                    seq=d.items(),
                    default={})
 
