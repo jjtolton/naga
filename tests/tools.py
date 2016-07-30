@@ -1,7 +1,9 @@
 import unittest
 
-from python_code.functional_tools.tools import apply, merge, assoc, dissoc, merge_with, merge_with_default, assoc_in, \
-    update_in, terminal_dict
+from functools import reduce
+
+from naga.tools import apply, merge, assoc, dissoc, merge_with, merge_with_default, assoc_in, update_in, terminal_dict, \
+    windows, append, explode
 
 
 class FuncyToolsTest(unittest.TestCase):
@@ -19,7 +21,7 @@ class FuncyToolsTest(unittest.TestCase):
     def test_explode_convs_list_dicts_to_list_tuples(self):
         ds = self.ds
         expected_res = {(1, 2), (3, 4), (4, 5), ('a', 'b'), ('c', 'd'), ('e', 'f'), ('name', 'taco')}
-        res = set(apply(*ds))
+        res = set(apply(explode, ds))
         self.assertEqual(expected_res, res)
 
     def test_merge_merges_dicts(self):
@@ -111,7 +113,7 @@ class FuncyToolsTest(unittest.TestCase):
                     'd': {'e': [4, 5, 6]}}}
         expected_res = {'a': {'c': [1, 2, 3],
                               'd': {'e': [4, 5, 6],
-                                    'f': {'1': 2, '3': 'hello'}}}}
+                                    'f': {'1': '2', '3': 'hello'}}}}
 
         res = assoc_in(d0, ['a', 'd', 'f'], {'1': '2', '3': 'hello'})
         self.assertEqual(expected_res, res)
@@ -129,3 +131,25 @@ class FuncyToolsTest(unittest.TestCase):
         b = {'b': {'this': 'ain\'t'}}
         self.assertTrue(terminal_dict(a))
         self.assertFalse(terminal_dict(b))
+
+    def test_windows_creates_groups_of_3s(self):
+
+        lst = range(1, 13)
+        expected_res = [[1, 2, 3],
+                        [4, 5, 6],
+                        [7, 8, 9],
+                        [10, 11, 12]]
+        res = windows(3, lst)
+        self.assertEqual(expected_res, res)
+
+    def test_windows_creates_groups_of_1s(self):
+        lst = range(5)
+        expected_res = [[x] for x in lst]
+        res = windows(1, lst)
+        self.assertEqual(expected_res, res)
+
+    def test_append_concatenates_lists(self):
+        lsts = range(10), range(10), range(10)
+        expected_res = reduce(lambda x, y: list(x) + list(y), lsts)
+        res = append(*map(list, lsts))
+        self.assertEqual(expected_res, res)

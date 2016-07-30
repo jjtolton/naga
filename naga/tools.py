@@ -5,8 +5,12 @@ from functools import reduce
 def rreduce(fn, seq, default=None):
     """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
     to functools.reduce"""
+
+    # if two arguments
     if default is None:
         return reduce(fn, seq)
+
+    # if three arguments
     return reduce(fn, seq, default)
 
 
@@ -32,7 +36,7 @@ def last(iterable):
 
 
 def rest(iterable):
-    return itertools.islice(iterable, 1)
+    return itertools.islice(iterable, 1, None)
 
 
 def unpack(fn):
@@ -82,9 +86,7 @@ def assoc_in(d, key_list, val):
 
 
 def terminal_dict(*ds):
-    dsdicts = are_dicts(*ds)
-    leavesdicts = all(map(lambda x: are_dicts(*x.values()), ds))
-    return not (dsdicts and leavesdicts)
+    return not (are_dicts(*ds) and all(map(lambda x: are_dicts(*x.values()), ds)))
 
 
 def terminal_dicts(*ds):
@@ -146,3 +148,30 @@ def itemmap(fn, d):
     return rreduce(fn=lambda d, _: unpack(lambda k, v: assoc(d, *fn(k, v)))(_),
                    seq=d.items(),
                    default={})
+
+
+def nary(fn):
+    def _nary(*x):
+        if len(x) == 2:
+            return fn(*x)
+        if len(x) == 1:
+            return fn(first(x))
+        else:
+            return fn(first(x), _nary(*rest(x)))
+
+    return _nary
+
+
+def append(*seqs):
+    return rreduce(fn=lambda x, y: x + y,
+                   seq=seqs)
+
+
+def windows(n, seq):
+    return rreduce(
+        fn=lambda groups, nxt: (append(groups[:-1],
+                                       [append(groups[-1], [nxt])]) if (groups and len(groups[-1]) < n) else
+                                append(groups, [[nxt]]) if groups
+                                else [[nxt]]),
+        seq=seq,
+        default=[])
