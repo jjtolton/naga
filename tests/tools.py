@@ -3,7 +3,7 @@ import unittest
 from functools import reduce
 
 from naga.tools import apply, merge, assoc, dissoc, merge_with, merge_with_default, assoc_in, update_in, terminal_dict, \
-    windows, append, explode
+    windows, append, explode, conj
 
 
 class FuncyToolsTest(unittest.TestCase):
@@ -153,3 +153,12 @@ class FuncyToolsTest(unittest.TestCase):
         expected_res = reduce(lambda x, y: list(x) + list(y), lsts)
         res = append(*map(list, lsts))
         self.assertEqual(expected_res, res)
+
+    def test_conjugate_conjugates_into_lst(self):
+
+        lst = list('abc')
+        appendos = 'def'
+        expected_res = list('abcdef')
+        res = conj(lst, *appendos)
+        self.assertEqual(expected_res, res)
+

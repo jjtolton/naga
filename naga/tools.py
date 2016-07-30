@@ -1,6 +1,9 @@
 import itertools
+import types
 from functools import reduce
 
+
+seq_types = list, tuple, str
 
 def rreduce(fn, seq, default=None):
     """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
@@ -40,14 +43,20 @@ def explode(*ds):
     return itertools.chain(*map(lambda d: d.items(), ds))
 
 
-def merge(*ds):
+def merge(*seqs):
+    if isinstance(seqs[0], seq_types):
+        return conj(*seqs)
+        
     return dict(rreduce(fn=lambda l, _: apply(lambda k, v: l + [(k, v)], _),
-                        seq=explode(*ds),
+                        seq=explode(*seqs),
                         default=[]))
 
 
-def assoc(d, k, v):
-    return merge(d, {k: v})
+def assoc(m, k, v):
+    str_ = seq_types
+    if isinstance(m, str_):
+        return append(m[:k] + [v] + m[k+1:])
+    return merge(m, {k: v})
 
 
 def dissoc(d, *ks):
@@ -153,7 +162,7 @@ def nary(fn):
 
 
 def append(*seqs):
-    return rreduce(fn=lambda x, y: x + y,
+    return rreduce(fn=lambda x, y: list(x) + list(y),
                    seq=seqs)
 
 
@@ -165,3 +174,7 @@ def windows(n, seq):
                                 else [[nxt]]),
         seq=seq,
         default=[])
+
+
+def conj(seq, *items):
+    return append(seq, items)
