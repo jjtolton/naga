@@ -144,17 +144,52 @@ def new_pv(item=None, bits=5):
             'bits': bits}
 
 
+def binseq2int(direction, binseq):
+    return sum(map(lambda x: 2 ** x[0] if x[1] else 0, enumerate(binseq[direction])))
+
+
+def lbinseq2int(binseq):
+    return sum(map(lambda x: 2 ** x[0] if x[1] else 0, enumerate(binseq[::-1])))
+
+def bbinseq2int(binseq):
+    return sum(map(lambda x: 2 ** x[0] if x[1] else 0, enumerate(binseq)))
+
+def shiftidx(n):
+    c = 0
+    while n > 0:
+        c += 1
+        n >>= 1
+    return c
+
+
+def calc_upper_subpath(pv, idx):
+    path = calculate_path(idx, pv)
+    nonroot = path[1:]
+    root = path[:1]
+    subpath = root + nonroot[:len(nonroot) - shiftidx(lbinseq2int(nonroot))]
+    return subpath
+
+def calc_lower_subpath(pv, idx):
+    path = calculate_path(idx, pv)[1:]
+    subpath = path[:len(path) - shiftidx(lbinseq2int(path))]
+    return subpath
+
 def pv_insert(pv, idx, item):
+    path = calculate_path(idx, pv)
+    val = toolz.get_in(path[:-1], pv)
+    new_val = toolz.assoc(val, len(val), item)
+    res = toolz.assoc_in(pv, path[:-1], new_val)
+    return res
+
+
+def calculate_path(idx, pv):
     bits = pv_bits(pv)
     depth = pv_depth(bits, pv)
     width = pv_width(bits)
     mask = pv_mask(width)
     shift = pv_shift(bits, depth)
     path = pv_path(bits, idx, mask, shift)
-    val = toolz.get_in(path[:-1], pv)
-    new_val = toolz.assoc(val, len(val), item)
-    res = toolz.assoc_in(pv, path[:-1], new_val)
-    return res
+    return path
 
 
 def main():
@@ -163,8 +198,12 @@ def main():
     for i in range(10):
         vec = pv_append(vec, i)
         # pprint.pprint(vec)
-        print(list(iter_pv(vec)))
-    pprint.pprint(vec)
+        # print(list(iter_pv(vec)))
+    # pprint.pprint(vec)
+    print(lbinseq2int([0, 0, 1, 1, 1]))
+    # print(calc_lower_subpath(vec, 3))
+    print(calc_upper_subpath(vec, 3))
+    pprint.pprint(toolz.get_in(calc_upper_subpath(vec, 3), vec))
 
 
 if __name__ == '__main__':

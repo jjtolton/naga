@@ -1,9 +1,9 @@
 import itertools
 import types
-from functools import reduce
-
+from functools import reduce, partial
 
 seq_types = list, tuple, str
+
 
 def rreduce(fn, seq, default=None):
     """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
@@ -29,6 +29,51 @@ def first(iterable):
     return next(iter(iterable))
 
 
+def dec(n):
+    return n - 1
+
+
+def inc(n):
+    return n + 1
+
+
+def nth(seq, idx):
+    return first(compose([rest] * dec(idx), iter(seq)))
+
+
+def second(seq): return nth(seq, 2)
+
+
+def third(seq): return nth(seq, 3)
+
+
+def fourth(seq): return nth(seq, 4)
+
+
+def fifth(seq): return nth(seq, 5)
+
+
+def sixth(seq): return nth(seq, 6)
+
+
+def seventh(seq): return nth(seq, 7)
+
+
+def eigth(seq): return nth(seq, 8)
+
+
+def ninth(seq): return nth(seq, 9)
+
+
+def tenth(seq): return nth(seq, 10)
+
+
+def compose(fns, x):
+    return rreduce(fn=lambda a, b: b(a),
+                   seq=fns,
+                   default=x)
+
+
 def last(iterable):
     a, b = itertools.tee(iterable)
     iter_len = reduce(lambda n, x: n + 1, enumerate(b), 0)
@@ -39,6 +84,20 @@ def rest(iterable):
     return itertools.islice(iterable, 1, None)
 
 
+def iterate(fn, x):
+    val = x
+    while True:
+        yield val
+        val = fn(x)
+
+
+def take(n, seq):
+    _seq = iter(seq)
+    return rreduce(fn=lambda lst, _: lst + [next(_seq)],
+                   seq=range(n),
+                   default=[])
+
+
 def explode(*ds):
     return itertools.chain(*map(lambda d: d.items(), ds))
 
@@ -46,7 +105,7 @@ def explode(*ds):
 def merge(*seqs):
     if isinstance(seqs[0], seq_types):
         return conj(*seqs)
-        
+
     return dict(rreduce(fn=lambda l, _: apply(lambda k, v: l + [(k, v)], _),
                         seq=explode(*seqs),
                         default=[]))
@@ -55,7 +114,7 @@ def merge(*seqs):
 def assoc(m, k, v):
     str_ = seq_types
     if isinstance(m, str_):
-        return append(m[:k] + [v] + m[k+1:])
+        return append(m[:k] + [v] + m[k + 1:])
     return merge(m, {k: v})
 
 
@@ -77,6 +136,101 @@ def merge_with_default(fn, default=None, *dicts):
                                    seq=explode(*dicts),
                                    default={}),
                       *dicts)
+
+
+class LazySeq(object):
+    def __init__(self, seq):
+        self.seq = iter(seq)
+        self.cache = {}
+        self.idx = -1
+
+    def __getitem__(self, idx):
+        if isinstance(idx, slice):
+            return self.__getslice__(idx.start, idx.stop, idx.step)
+
+        elif idx in self.cache:
+            return self.cache[idx]
+        else:
+            while self.idx < idx:
+                self.cache[self.idx + 1] = next(self.seq)
+                self.idx += 1
+            return self[idx]
+
+    def __iter__(self):
+        idx = 0
+        while True:
+            try:
+                yield self[idx]
+                idx += 1
+            except StopIteration:
+                raise StopIteration
+
+    def __add__(self, other):
+        return LazySeq(itertools.chain(self, other))
+
+    def __eq__(self, other):
+        return id(self) == id(other)
+
+    def __getslice__(self, start, stop=None, step=None):
+        if not stop:
+            stop = start
+            return list(itertools.islice(self, stop))
+        else:
+            return list(itertools.islice(self, start, stop, step))
+
+    def append(self, item):
+        return self + [item]
+
+    def __contains__(self, item):
+        return item in list(self)
+
+    def __reversed__(self):
+        return reversed(list(self))
+
+    def __rmul__(self, other):
+        return list(self) * other
+
+    def __setitem__(self, idx, value):
+        return list(self).__setitem__(idx, value)
+
+    def __setslice__(self, i, j, sequence):
+        return list(self).__setslice__(i, j, sequence)
+
+    def __str__(self):
+        return 'LazySequence({})'.format(repr(self.seq))
+
+    def __repr__(self):
+        return self.__str__()
+
+    def count(self, item):
+        return list(self).count(item)
+
+    def extend(self, other):
+        return self + other
+
+    def index(self, item):
+
+        for n, _item in enumerate(self):
+            if item == _item:
+                return n
+
+    def insert(self, idx, item):
+        base_list = list(self)
+        return base_list[:idx] + [item] + [base_list[idx + 1:]]
+
+    def pop(self, idx=None):
+        base_list = list(self)
+        if idx is None:
+            return base_list[:-1]
+        return base_list[:idx] + base_list[idx + 1:]
+
+
+        #  'index',
+        #  'insert',
+        #  'pop',
+        #  'remove',
+        #  'reverse',
+        #  'sort']
 
 
 def assoc_in(d, key_list, val):
@@ -162,7 +316,7 @@ def nary(fn):
 
 
 def append(*seqs):
-    return rreduce(fn=lambda x, y: list(x) + list(y),
+    return rreduce(fn=lambda x, y: x + y,
                    seq=seqs)
 
 
@@ -178,3 +332,29 @@ def windows(n, seq):
 
 def conj(seq, *items):
     return append(seq, items)
+
+
+def main():
+    g = LazySeq((x for x in range(10)))
+    print(g[0])
+    print(g[3])
+    print(g.pop(5))
+    print(g[3:5])
+    # print(len(g))
+    print(list(g))
+    print(list(g))
+
+    print(second(g))
+    print(next(iter(g)))
+    g2 = g + g
+
+    print(next(iterate(inc, 1)))
+
+    print(take(5, g))
+    print(tenth(g))
+    # print(list(g2))
+    # print(list(g))
+
+
+if __name__ == '__main__':
+    main()
