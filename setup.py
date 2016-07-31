@@ -4,7 +4,7 @@ if __name__ == '__main__':
     setup(
         name='naga',
         packages=['naga'],  # this must be the same as the name above
-        version='0.1.01',
+        version='0.1.02',
         description='A powerful Python/Lisp-hybrid-monster!',
         author='James J. Tolton',
         author_email='jjtolton@gmail.com',
