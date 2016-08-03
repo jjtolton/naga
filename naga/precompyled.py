@@ -6,7 +6,7 @@ from naga.tools import apply
 FuncWrap = namedtuple('FuncWrap', field_names=['fn', 'args', 'kwargs'])
 
 
-def precompyled(fn):
+def iconize(fn):
     @wraps(fn)
     def inner(*args, **kwargs):
         return FuncWrap(fn, args, kwargs)
@@ -23,15 +23,15 @@ def runall(pc_fn):
 
 
 def main():
-    @precompyled
+    @iconize
     def foo(x, y=None):
         return x + 2 + (y or 0)
 
-    @precompyled
+    @iconize
     def bar(x):
         return x + 4
 
-    @precompyled
+    @iconize
     def baz(x):
         return runall(foo(x)) + runall(bar(x))
 

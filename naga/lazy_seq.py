@@ -1,15 +1,5 @@
 import itertools
 
-from naga.tools import first, nth, rest
-from tools import tenth
-
-class Cons(object):
-
-    def __init__(self, lst):
-        self.lst = lst
-        self.first = first(lst)
-        self.rest = rest(lst)
-
 
 class LazySeq(object):
     def __init__(self, seq):
@@ -75,6 +65,12 @@ class LazySeq(object):
     def __repr__(self):
         return self.__str__()
 
+    def __len__(self):
+        c = 0
+        for i in self:
+            c += 1
+        return c
+
     def count(self, item):
         return list(self).count(item)
 
@@ -119,15 +115,9 @@ def main():
 
     even_nums = LazySeq(x for x in itertools.count() if x % 2 == 0)
 
-
-    print(first(even_nums))
-    print(first(even_nums))
-    print(first(even_nums))
-
-    print(tenth(even_nums))
-
-    print(nth(even_nums, 354))
-    print(nth(even_nums, 354))
+    lazy_seq = LazySeq(itertools.takewhile(lambda x: x < 10, even_nums))
+    print(list(lazy_seq))
+    print(len(lazy_seq))
 
     print(even_nums[3:10])
 
@@ -140,6 +130,7 @@ def main():
     iterseq = iter(seq)
     print(next(iterseq))
     print(next(iterseq))
+
 if __name__ == '__main__':
     main()
 
