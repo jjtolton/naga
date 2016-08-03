@@ -1,6 +1,5 @@
 import itertools
-import types
-from functools import reduce, partial
+from functools import reduce
 
 seq_types = list, tuple, str
 
@@ -138,101 +137,6 @@ def merge_with_default(fn, default=None, *dicts):
                       *dicts)
 
 
-class LazySeq(object):
-    def __init__(self, seq):
-        self.seq = iter(seq)
-        self.cache = {}
-        self.idx = -1
-
-    def __getitem__(self, idx):
-        if isinstance(idx, slice):
-            return self.__getslice__(idx.start, idx.stop, idx.step)
-
-        elif idx in self.cache:
-            return self.cache[idx]
-        else:
-            while self.idx < idx:
-                self.cache[self.idx + 1] = next(self.seq)
-                self.idx += 1
-            return self[idx]
-
-    def __iter__(self):
-        idx = 0
-        while True:
-            try:
-                yield self[idx]
-                idx += 1
-            except StopIteration:
-                raise StopIteration
-
-    def __add__(self, other):
-        return LazySeq(itertools.chain(self, other))
-
-    def __eq__(self, other):
-        return id(self) == id(other)
-
-    def __getslice__(self, start, stop=None, step=None):
-        if not stop:
-            stop = start
-            return list(itertools.islice(self, stop))
-        else:
-            return list(itertools.islice(self, start, stop, step))
-
-    def append(self, item):
-        return self + [item]
-
-    def __contains__(self, item):
-        return item in list(self)
-
-    def __reversed__(self):
-        return reversed(list(self))
-
-    def __rmul__(self, other):
-        return list(self) * other
-
-    def __setitem__(self, idx, value):
-        return list(self).__setitem__(idx, value)
-
-    def __setslice__(self, i, j, sequence):
-        return list(self).__setslice__(i, j, sequence)
-
-    def __str__(self):
-        return 'LazySequence({})'.format(repr(self.seq))
-
-    def __repr__(self):
-        return self.__str__()
-
-    def count(self, item):
-        return list(self).count(item)
-
-    def extend(self, other):
-        return self + other
-
-    def index(self, item):
-
-        for n, _item in enumerate(self):
-            if item == _item:
-                return n
-
-    def insert(self, idx, item):
-        base_list = list(self)
-        return base_list[:idx] + [item] + [base_list[idx + 1:]]
-
-    def pop(self, idx=None):
-        base_list = list(self)
-        if idx is None:
-            return base_list[:-1]
-        return base_list[:idx] + base_list[idx + 1:]
-
-
-        #  'index',
-        #  'insert',
-        #  'pop',
-        #  'remove',
-        #  'reverse',
-        #  'sort']
-
-
 def assoc_in(d, key_list, val):
     d1 = keys2dict(val, *key_list)
     return recursive_dict_merge(d, d1)
@@ -332,28 +236,6 @@ def windows(n, seq):
 
 def conj(seq, *items):
     return append(seq, items)
-
-
-def main():
-    g = LazySeq((x for x in range(10)))
-    print(g[0])
-    print(g[3])
-    print(g.pop(5))
-    print(g[3:5])
-    # print(len(g))
-    print(list(g))
-    print(list(g))
-
-    print(second(g))
-    print(next(iter(g)))
-    g2 = g + g
-
-    print(next(iterate(inc, 1)))
-
-    print(take(5, g))
-    print(tenth(g))
-    # print(list(g2))
-    # print(list(g))
 
 
 if __name__ == '__main__':
