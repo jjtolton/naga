@@ -66,7 +66,7 @@ class LazySeq(object):
         return self.__str__()
 
     def __len__(self):
-        for i in [x for x in self]:
+        for i in self:
             pass
         return i + 1
 
@@ -145,6 +145,10 @@ def main():
     # for item in items:
     #     print(item)
 
+    items2 = []
+
+    # next(items2)
+    print(LazySeq(items2)[0])
 
 if __name__ == '__main__':
     main()

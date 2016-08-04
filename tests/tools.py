@@ -10,7 +10,7 @@ from naga.tools import apply, merge, assoc, dissoc, merge_with, merge_with_defau
     windows, append, explode, conj, first, LazySeq, nth, rest, layreduce, take, iterate, drop
 
 
-class FuncyToolsTest(unittest.TestCase):
+class FunkyToolsTest(unittest.TestCase):
 
     def setUp(self):
         self.ds = a, b, c = [
