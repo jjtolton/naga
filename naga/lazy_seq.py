@@ -29,7 +29,7 @@ class LazySeq(object):
                 raise StopIteration
 
     def __add__(self, other):
-        return LazySeq(itertools.chain(self, other))
+        return list(self) + list(other)
 
     def __eq__(self, other):
         return id(self) == id(other)
@@ -66,11 +66,9 @@ class LazySeq(object):
         return self.__str__()
 
     def __len__(self):
-        if 'len' not in self.cache:
-            for i in self:
-                pass
-            self.cache['len'] = i + 1
-        return self.cache['len']
+        for i in [x for x in self]:
+            pass
+        return i + 1
 
     def count(self, item):
         return list(self).count(item)
@@ -138,6 +136,14 @@ def main():
     iterseq = iter(seq)
     print(next(iterseq))
     print(next(iterseq))
+
+    items = reduce(lambda x, y: x + range(100), range(50), LazySeq([2]))
+    # print(len(items))
+    print(len(items))
+    # print([items[i] for i in range(1000)])
+    # print(len(list(items)))
+    # for item in items:
+    #     print(item)
 
 
 if __name__ == '__main__':
