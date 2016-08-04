@@ -1,6 +1,7 @@
 import itertools
 from functools import reduce, partial
 
+
 from naga.lazy_seq import LazySeq
 
 seq_types = list, tuple, str, LazySeq
@@ -16,6 +17,21 @@ def rreduce(fn, seq, default=None):
 
     # if three arguments
     return reduce(fn, seq, default)
+
+
+def layreduce(fn, seq, default=None):
+    """LazySeq version of reduce that returns 1 item """
+    def _lzreduce(fn, seq, default=None):
+        accum = default if somep(default) else first(seq)
+        _seq = LazySeq(seq) if somep(default) else rest(seq)
+        while True:
+            yield accum
+            accum = fn(accum, first(_seq))
+            _seq = rest(_seq)
+            if not _seq:
+                raise StopIteration
+
+    return LazySeq(_lzreduce(fn, seq, default))
 
 
 def get_in(d, ks, not_found=None):
@@ -38,20 +54,26 @@ def apply(fn, x):
 
 
 def dec(n):
+    """dec[rement].  Return n - 1"""
     return n - 1
 
 
 def inc(n):
+    """inc[rement].  Return n + 1"""
     return n + 1
 
 
 def first(iterable):
     """Returns the first item in the collection. If iterable evaluates to None, returns None."""
-    return next(iter(iterable)) if iterable else None
+    return LazySeq(iterable)[0] if iterable else None
 
 
 def nth(seq, idx):
-    return first(compose([rest] * dec(idx), iter(seq)))
+    """Return the nth item of a sequence.  Constant time if list, tuple, or str;
+    linear time if a generator or LazySeq"""
+    if isinstance(seq, seq_types):
+        return seq[idx]
+    return LazySeq(seq)[idx]
 
 
 def second(seq):
@@ -103,11 +125,15 @@ def tenth(seq):
     return nth(seq, 9)
 
 
-def compose(fns, x):
+def compose(fns, x=None):
     """Takes a set of functions and returns a fn that is the composition
 of those fns.  The returned fn takes a variable number of args,
 applies the rightmost of fns to the args, the next
-fn (right-to-left) to the result, etc."""
+fn (right-to-left) to the result, etc.  If no value is supplied, returns a
+stateful transducer"""
+    if x is None:
+        return partial(compose, fns)
+
     return rreduce(fn=lambda a, b: b(a),
                    seq=fns,
                    default=x)
@@ -119,7 +145,9 @@ def last(iterable):
 
 
 def rest(iterable):
-    """Returns a LazySeq of the items after the first. """
+    """Returns a LazySeq of the items after the first. Will be an empty list if """
+    if len(iterable) == 0:
+        return iterable
     return LazySeq(itertools.islice(iterable, 1, None))
 
 
@@ -130,7 +158,7 @@ def iterate(fn, x):
         val = x
         while True:
             yield val
-            val = fn(x)
+            val = fn(val)
 
     return LazySeq(_iterate(fn, x))
 
@@ -152,7 +180,7 @@ Returns a stateful transducer when no collection is provided."""
     if seq is None:
         return partial(n, seq)
 
-    return LazySeq(itertools.islice(iter, 1, None))
+    return LazySeq(itertools.islice(seq, n, None))
 
 
 def explode(*ds):
@@ -290,31 +318,39 @@ def keyfilter(fn, d):
 
 
 def valfilter(fn, d):
+    """returns {k: v for k, v in d.items() if fn(v)}"""
     # TODO: make purely functional when persistent vectors are finished
     return {k: v for k, v in d.items() if fn(v)}
 
 
 def itemfilter(fn, d):
+    """returns {k: v for k, v in d.items() if fn(k, v)}"""
     # TODO: make purely functional when persistent vectors are finished
     return {k: v for k, v in d.items() if fn(k, v)}
 
 
 def valmap(fn, d):
+    """{k: fn(v) for k, v in d.items()}"""
     # TODO: make purely functional when persistent vectors are finished
     return {k: fn(v) for k, v in d.items()}
 
 
 def keymap(fn, d):
+    """returns {fn(k): v for k, v in d.items()}"""
     # TODO: make purely functional when persistent vectors are finished
     return {fn(k): v for k, v in d.items()}
 
 
 def itemmap(fn, d):
+    """returns dict(fn(k, v) for k, v in d.items())"""
     # TODO: make purely functional when persistent vectors are finished
     return dict(fn(k, v) for k, v in d.items())
 
 
 def nary(fn):
+    """fn(a, b) --> fn(*x).  Only works if the output type is the same as the
+     input type"""
+
     def _nary(*x):
         if len(x) == 2:
             return fn(*x)
@@ -327,16 +363,30 @@ def nary(fn):
 
 
 def append(*seqs):
+    """Returns a LazySeq concatenation of iterables (works in constant time)."""
     return LazySeq(itertools.chain(*seqs))
 
 
 def pop(iterable):
     seq = LazySeq(iterable)
-    return LazySeq(itertools.islice(0, len(seq)-1))
+    return LazySeq(itertools.islice(0, len(seq) - 1))
 
 
 def windows(n, seq):
     return LazySeq(itertools.izip_longest(*(seq[i::n] for i in range(n))))
 
+
 def conj(seq, *items):
     return itertools.chain(seq, items)
+
+
+def nonep(x):
+    return x is None
+
+
+def complement(x):
+    return not x
+
+
+def somep(x):
+    return complement(nonep(x))

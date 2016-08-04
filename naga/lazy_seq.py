@@ -93,6 +93,8 @@ class LazySeq(object):
             return base_list[:-1]
         return base_list[:idx] + base_list[idx + 1:]
 
+    def __nonzero__(self):
+        return len(self) > 0
 
 def memo(fn):
     cache = {}

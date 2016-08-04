@@ -2,8 +2,12 @@ import unittest
 
 from functools import reduce
 
+import operator
+
+import itertools
+
 from naga.tools import apply, merge, assoc, dissoc, merge_with, merge_with_default, assoc_in, update_in, terminal_dict, \
-    windows, append, explode, conj, first
+    windows, append, explode, conj, first, LazySeq, nth, rest, layreduce, take, iterate, drop
 
 
 class FuncyToolsTest(unittest.TestCase):
@@ -162,4 +166,70 @@ class FuncyToolsTest(unittest.TestCase):
         expected_res = list('abcdef')
         res = list(conj(lst, *appendos))
         self.assertEqual(expected_res, res)
+
+    def test_first_gets_first_item_of_list(self):
+        a = [1]
+        expected_res = 1
+        res = first(a)
+        self.assertEqual(expected_res, res)
+
+    def test_first_gets_first_item_of_tuple(self):
+        a = 1,
+        expected_res = 1
+        res = first(a)
+        self.assertEqual(expected_res, res)
+
+    def test_first_gets_first_item_of_lazyseq(self):
+        a = LazySeq([1, 2, 3])
+        expected_res = 1
+        res = first(a)
+        self.assertEqual(expected_res, res)
+
+    def test_nth_returns_nth_item(self):
+
+        a = [1, 2, 3]
+        expected_res = 3
+        res = nth(a, 2)
+        self.assertEqual(expected_res, res)
+
+    def test_rest_returns_none_on_empty_seq(self):
+
+        seqs = [], tuple(), {}, ''
+        expected_res = list(seqs)
+        res = [rest(x) for x in seqs]
+        self.assertEqual(expected_res, res)
+
+    def test_layreduce_sums_numbers(self):
+
+        nums = range(5)
+        expected_res = [0, 1, 3, 6]
+        res = list(layreduce(fn=operator.add,
+                             seq=nums))
+        self.assertEqual(expected_res, res)
+
+    def test_first_returns_first_on_str(self):
+        a = 'hey'
+        expected_res = 'h'
+        res = first(a)
+        self.assertEqual(expected_res, res)
+
+    def test_iterate_iterates_over_fn(self):
+
+        double = lambda x: x * 2
+        expected_res = [2, 4, 8, 16, 32]
+        res = list(take(5, iterate(double, 2)))
+        self.assertEqual(expected_res, res)
+
+    def test_take_takes_first_10_of_inf_seq(self):
+
+        expected_res = range(10)
+        res = list(take(10, itertools.count()))
+        self.assertEqual(expected_res, res)
+
+    def test_drop_drops_first_5_of_inf_seq(self):
+        expected_res = range(5, 10)
+        res = list(take(5, drop(5, itertools.count())))
+        self.assertEqual(expected_res, res)
+
+
 
