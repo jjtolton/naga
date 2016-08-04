@@ -63,9 +63,13 @@ def inc(n):
     return n + 1
 
 
+def emptyp(iterable):
+    return isinstance(iterable, seq_types)
+
+
 def first(iterable):
     """Returns the first item in the collection. If iterable evaluates to None, returns None."""
-    return LazySeq(iterable)[0] if iterable else None
+    return nth(iterable, 0) if iterable else None
 
 
 def nth(seq, idx):

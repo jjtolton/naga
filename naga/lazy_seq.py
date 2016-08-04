@@ -66,10 +66,11 @@ class LazySeq(object):
         return self.__str__()
 
     def __len__(self):
-        c = 0
-        for i in self:
-            c += 1
-        return c
+        if 'len' not in self.cache:
+            for i in self:
+                pass
+            self.cache['len'] = i + 1
+        return self.cache['len']
 
     def count(self, item):
         return list(self).count(item)
@@ -94,25 +95,31 @@ class LazySeq(object):
         return base_list[:idx] + base_list[idx + 1:]
 
     def __nonzero__(self):
-        return len(self) > 0
+        try:
+            return bool(self[0])
+        except IndexError:
+            return False
+
 
 def memo(fn):
     cache = {}
+
     def _memo(*args):
         if args in cache:
             return cache[args]
         res = cache[args] = fn(*args)
         return res
+
     _memo.cache = cache
     return _memo
 
 
 # @memo
 def simplefib(n):
-    return n if n < 2 else simplefib(n-1) + simplefib(n-2)
+    return n if n < 2 else simplefib(n - 1) + simplefib(n - 2)
+
 
 def main():
-
     fiblist = LazySeq((simplefib(i) for i in itertools.count()))
 
     even_nums = LazySeq(x for x in itertools.count() if x % 2 == 0)
@@ -126,19 +133,12 @@ def main():
     seq = LazySeq(range(10))
     print(sorted(seq))
 
-
     print(list(seq + seq))
     print (zip(seq, seq))
     iterseq = iter(seq)
     print(next(iterseq))
     print(next(iterseq))
 
+
 if __name__ == '__main__':
     main()
-
-
-
-
-
-
-
