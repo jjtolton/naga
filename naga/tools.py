@@ -309,8 +309,7 @@ def supassoc_in(d, val, k, *ks):
 
 def recursive_group_dicts(*ds):
     """Like recursive_dict_merge, except handles recursive collisions by grouping into a list instead of merging"""
-    return merge_with(lambda x, y: merge(x, y) if are_dicts(x.values() + y.values()) else x.values() + y.values(), *ds)
-
+    return merge_with(lambda x, y: recursive_group_dicts(x, y) if not terminal_dicts(x, y) else {first(x.keys()): x.values() + y.values()}, *ds)
 
 def keyfilter(fn, d):
     # TODO: make purely functional when persistent vectors are finished
