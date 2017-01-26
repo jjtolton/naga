@@ -230,21 +230,16 @@ def merge_with(fn, *ds):
 the first.  If a key occurs in more than one dict, the mapping(s)
 from the latter (left-to-right) will be combined with the mapping in
 the result by calling fn(val-in-result, val-in-latter)."""
-
-    return rreduce(fn=lambda d, x: apply(lambda k, v:
-                                         assoc(d, k, fn(d[k], v)) if k in d else
-                                         assoc(d, k, v), x),
-                   seq=explode(*ds),
-                   default={})
+    return reduce(
+        lambda d, x: dict(d, **dict(((k, v) if k not in d else
+                                     (k, fn(d[k], x[k])) for k, v in x.items()))),
+        ds)
 
 
-def merge_with_default(fn, default=None, *dicts):
-    """Like merge_with, except all keys are initialized to default value specified to simplify the collision-fn."""
-    _fn, _default = fn, default
-    return merge_with(_fn, rreduce(fn=lambda d, _: apply(lambda k, v: assoc(d, k, _default), _),
-                                   seq=explode(*dicts),
-                                   default={}),
-                      *dicts)
+def merge_with_default(fn, default='null', *dicts):
+    """Like merge_with, except all keys are initialized to default value specified to simplify the collision-fn.
+    If no default is specified, will use the initial values of the last dictionary merged."""
+    return merge_with(fn, valmap(lambda v: v if default is 'null' else default, merge(*dicts)), *dicts)
 
 
 def assoc_in(d, key_list, val):
