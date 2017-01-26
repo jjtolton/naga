@@ -7,7 +7,7 @@ import operator
 import itertools
 
 from naga.tools import apply, merge, assoc, dissoc, merge_with, merge_with_default, assoc_in, update_in, terminal_dict, \
-    windows, append, explode, conj, first, LazySeq, nth, rest, layreduce, take, iterate, drop
+    windows, append, explode, conj, first, nth, rest, layreduce, take, iterate, drop
 
 
 class FunkyToolsTest(unittest.TestCase):
@@ -179,12 +179,6 @@ class FunkyToolsTest(unittest.TestCase):
         res = first(a)
         self.assertEqual(expected_res, res)
 
-    def test_first_gets_first_item_of_lazyseq(self):
-        a = LazySeq([1, 2, 3])
-        expected_res = 1
-        res = first(a)
-        self.assertEqual(expected_res, res)
-
     def test_nth_returns_nth_item(self):
 
         a = [1, 2, 3]
@@ -201,8 +195,8 @@ class FunkyToolsTest(unittest.TestCase):
 
     def test_layreduce_sums_numbers(self):
 
-        nums = range(5)
-        expected_res = [0, 1, 3, 6]
+        nums = list(range(5))
+        expected_res = [0, 1, 3, 6, 10]
         res = list(layreduce(fn=operator.add,
                              seq=nums))
         self.assertEqual(expected_res, res)
@@ -222,14 +216,15 @@ class FunkyToolsTest(unittest.TestCase):
 
     def test_take_takes_first_10_of_inf_seq(self):
 
-        expected_res = range(10)
+        expected_res = list(range(10))
         res = list(take(10, itertools.count()))
         self.assertEqual(expected_res, res)
 
     def test_drop_drops_first_5_of_inf_seq(self):
-        expected_res = range(5, 10)
+        expected_res = list(range(5, 10))
         res = list(take(5, drop(5, itertools.count())))
         self.assertEqual(expected_res, res)
 
 
-
+if __name__ == '__main__':
+    unittest.main()

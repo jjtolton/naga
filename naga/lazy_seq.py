@@ -70,6 +70,7 @@ class LazySeq(object):
         return self.__str__()
 
     def __len__(self):
+        i = 0
         for i in self:
             pass
         return i + 1

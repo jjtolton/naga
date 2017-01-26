@@ -1,10 +1,7 @@
 import itertools
 from functools import reduce, partial
 
-
-from naga import LazySeq
-
-seq_types = list, tuple, str, LazySeq
+seq_types = list, tuple, str
 
 
 def rreduce(fn, seq, default=None):
@@ -20,18 +17,22 @@ def rreduce(fn, seq, default=None):
 
 
 def layreduce(fn, seq, default=None):
-    """LazySeq version of reduce that returns 1 item """
+    """LazySeq version of reduce that returns 1 item at a time"""
+
     def _lzreduce(fn, seq, default=None):
         accum = default if somep(default) else first(seq)
-        _seq = LazySeq(seq) if somep(default) else rest(seq)
+        _seq = iter(rest(seq))
         while True:
             yield accum
-            accum = fn(accum, first(_seq))
-            _seq = rest(_seq)
+            fst = first(_seq)
+            if fst is None:
+                raise StopIteration
+
+            accum = fn(accum, fst)
             if not _seq:
                 raise StopIteration
 
-    return LazySeq(_lzreduce(fn, seq, default))
+    return _lzreduce(fn, seq, default)
 
 
 def get_in(d, ks, not_found=None):
@@ -65,15 +66,21 @@ def inc(n):
 
 def first(iterable):
     """Returns the first item in the collection. If iterable evaluates to None, returns None."""
-    return nth(iterable, 0) if iterable else None
+    seq, test = itertools.tee(iterable)
+    try:
+        next(test)
+    except StopIteration:
+        return None
+    return nth(seq, 0)
 
 
 def nth(seq, idx):
     """Return the nth item of a sequence.  Constant time if list, tuple, or str;
     linear time if a generator or LazySeq"""
+    _, _seq = itertools.tee(seq)
     if isinstance(seq, seq_types):
         return seq[idx]
-    return LazySeq(seq)[idx]
+    return next(itertools.islice(_seq, idx, idx+1))
 
 
 def second(seq):
@@ -141,14 +148,19 @@ stateful transducer"""
 
 def last(iterable):
     """Return the last item in an iterable, in linear time"""
-    return LazySeq(iterable)[-1]
+    _, seq = itertools.tee(iterable)
+    return next(itertools.islice(seq, -1, None))
 
 
 def rest(iterable):
-    """Returns a LazySeq of the items after the first. Will be an empty list if """
-    if len(iterable) == 0:
-        return iterable
-    return LazySeq(itertools.islice(iterable, 1, None))
+    """Returns a LazySeq of the items after the first. Will be an empty list if iterable is empty generator
+    or initial item type if empty iterable"""
+    seq, test = itertools.tee(iterable)
+    try:
+        next(test)
+    except StopIteration:
+        return iterable if isinstance(iterable, (seq_types + (dict,))) else []
+    return itertools.islice(iterable, 1, None)
 
 
 def iterate(fn, x):
@@ -160,7 +172,7 @@ def iterate(fn, x):
             yield val
             val = fn(val)
 
-    return LazySeq(_iterate(fn, x))
+    return _iterate(fn, x)
 
 
 def take(n, seq=None):
@@ -171,7 +183,7 @@ no collection is provided."""
     if seq is None:
         return partial(take, n)
 
-    return LazySeq(itertools.islice(iter(seq), 0, n))
+    return itertools.islice(iter(seq), 0, n)
 
 
 def drop(n, seq=None):
@@ -180,19 +192,19 @@ Returns a stateful transducer when no collection is provided."""
     if seq is None:
         return partial(n, seq)
 
-    return LazySeq(itertools.islice(seq, n, None))
+    return itertools.islice(seq, n, None)
 
 
 def explode(*ds):
     """Returns a LazySeq of the concatenated (key,value) pairs of the provided dictionaries"""
-    return LazySeq(itertools.chain(*map(lambda d: d.items(), ds)))
+    return itertools.chain(*map(lambda d: d.items(), ds))
 
 
 def merge(*ds):
     """Returns a dict that consists of the rest of the dicts merged onto
 the first.  If a key occurs in more than one dict, the mapping from
 the latter (left-to-right) will be the mapping in the result."""
-    return reduce(lambda d, x: dict(d, **x), ds)
+    return dict(itertools.chain(*map(lambda _d: _d.items(), ds)))
 
 
 def assoc(m, k, v):
@@ -213,11 +225,11 @@ that does not contain a mapping for key(s).  If d is a str, returns a string wit
 For any other sequence type, returns a LazySeq with the listed keys filtered."""
 
     if isinstance(d, str):
-        filtered = itertools.ifilter(lambda x: x not in ks, d)
+        filtered = filter(lambda x: x not in ks, d)
         return ''.join(filtered)
 
     if isinstance(d, seq_types):
-        return LazySeq(itertools.ifilter(lambda x: x not in ks, d))
+        return filter(lambda x: x not in ks, d)
 
     return keyfilter(lambda x: x not in ks, d)
 
@@ -228,16 +240,15 @@ the first.  If a key occurs in more than one dict, the mapping(s)
 from the latter (left-to-right) will be combined with the mapping in
 the result by calling fn(val-in-result, val-in-latter)."""
     return reduce(
-        lambda d, x: dict(d, **dict(((k, v) if k not in d else
-                                     (k, fn(d[k], x[k])) for k, v in x.items()))),
+        lambda d, x: dict(itertools.chain(
+            d.items(),
+            dict(((k, v) if k not in d else (k, fn(d[k], x[k])) for k, v in x.items())).items())),
         ds)
-
 
 def merge_with_default(fn, default='null', *dicts):
     """Like merge_with, except all keys are initialized to default value specified to simplify the collision-fn.
     If no default is specified, will use the initial values of the last dictionary merged."""
     return merge_with(fn, valmap(lambda v: v if default is 'null' else default, merge(*dicts)), *dicts)
-
 
 def assoc_in(d, key_list, val):
     """Associates a value in a nested associative structure, where ks is a
@@ -252,14 +263,11 @@ keys into dictionaries.  I.e.:
     d1 = keys2dict(val, *key_list)
     return recursive_dict_merge(d, d1)
 
-
 def terminal_dict(*ds):
     return not (are_dicts(*ds) and all(map(lambda x: are_dicts(*x.values()), ds)))
 
-
 def terminal_dicts(*ds):
     return all(map(terminal_dict, ds))
-
 
 def update_in(d, key_list, fn):
     """'Updates' a value in a nested associative structure, where ks is a
@@ -272,71 +280,60 @@ created."""
     d1 = keys2dict(v, *key_list)
     return merge_with(lambda a, b: recursive_dict_merge(a, b) if not are_dicts(a, b) else b, d, d1)
 
-
 def recursive_dict_merge(*ds):
     """Recursively merge dictionaries"""
     return merge_with(lambda a, b: recursive_dict_merge(a, b) if not terminal_dicts(a, b) else merge(a, b), *ds)
-
 
 def keys2dict(val, *ks):
     """Convert a value and a list of keys to a nested dictionary with the value at the leaf"""
     v_in = reduce(lambda x, y: {y: x}, (list(ks) + [val])[::-1])
     return v_in
 
-
 def are_instances(items, types):
     """Plural of isinstance"""
     return all(map(lambda x: isinstance(x, types), items))
 
-
 def are_dicts(*ds):
     return are_instances(ds, dict)
-
 
 def supassoc_in(d, val, k, *ks):
     """Like assoc_in, except collisions are handled by grouping into a list rather than merging"""
     ds = d, keys2dict(val, *itertools.chain([k], ks))
     return recursive_group_dicts(*ds)
 
-
 def recursive_group_dicts(*ds):
     """Like recursive_dict_merge, except handles recursive collisions by grouping into a list instead of merging"""
-    return merge_with(lambda x, y: recursive_group_dicts(x, y) if not terminal_dicts(x, y) else {first(x.keys()): x.values() + y.values()}, *ds)
+    return merge_with(lambda x, y: recursive_group_dicts(x, y) if not terminal_dicts(x, y) else {
+        first(x.keys()): x.values() + y.values()}, *ds)
 
 def keyfilter(fn, d):
     # TODO: make purely functional when persistent vectors are finished
     return {k: v for k, v in d.items() if fn(k)}
-
 
 def valfilter(fn, d):
     """returns {k: v for k, v in d.items() if fn(v)}"""
     # TODO: make purely functional when persistent vectors are finished
     return {k: v for k, v in d.items() if fn(v)}
 
-
 def itemfilter(fn, d):
     """returns {k: v for k, v in d.items() if fn(k, v)}"""
     # TODO: make purely functional when persistent vectors are finished
     return {k: v for k, v in d.items() if fn(k, v)}
-
 
 def valmap(fn, d):
     """{k: fn(v) for k, v in d.items()}"""
     # TODO: make purely functional when persistent vectors are finished
     return {k: fn(v) for k, v in d.items()}
 
-
 def keymap(fn, d):
     """returns {fn(k): v for k, v in d.items()}"""
     # TODO: make purely functional when persistent vectors are finished
     return {fn(k): v for k, v in d.items()}
 
-
 def itemmap(fn, d):
     """returns dict(fn(k, v) for k, v in d.items())"""
     # TODO: make purely functional when persistent vectors are finished
     return dict(fn(k, v) for k, v in d.items())
-
 
 def nary(fn):
     """fn(a, b) --> fn(*x).  Only works if the output type is the same as the
@@ -352,16 +349,13 @@ def nary(fn):
 
     return _nary
 
-
 def append(*seqs):
     """Returns a LazySeq concatenation of iterables (works in constant time)."""
     return itertools.chain(*seqs)
 
-
 def pop(iterable):
     _, seq = itertools.tee(iterable)
     return itertools.islice(0, len(seq) - 1)
-
 
 def windows(n, seq):
     """Returns a lazy sequence of lists of n items each"""
@@ -374,18 +368,17 @@ def partition(n, seq):
     """Returns a lazy sequence of lists of n items each"""
     return windows(n, seq)
 
-
 def conj(seq, *items):
     return itertools.chain(seq, items)
-
 
 def nonep(x):
     return x is None
 
-
 def complement(x):
     return not x
 
-
 def somep(x):
     return complement(nonep(x))
+
+if __name__ == '__main__':
+    print('test')
