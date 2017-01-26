@@ -1,4 +1,4 @@
-from lazy_seq import *
-from precompyled import *
-from tools import *
+from naga.lazy_seq import *
+from naga.precompyled import *
+from naga.tools import *
 

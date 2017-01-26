@@ -2,7 +2,7 @@ import itertools
 from functools import reduce, partial
 
 
-from naga.lazy_seq import LazySeq
+from naga import LazySeq
 
 seq_types = list, tuple, str, LazySeq
 
@@ -355,16 +355,24 @@ def nary(fn):
 
 def append(*seqs):
     """Returns a LazySeq concatenation of iterables (works in constant time)."""
-    return LazySeq(itertools.chain(*seqs))
+    return itertools.chain(*seqs)
 
 
 def pop(iterable):
-    seq = LazySeq(iterable)
-    return LazySeq(itertools.islice(0, len(seq) - 1))
+    _, seq = itertools.tee(iterable)
+    return itertools.islice(0, len(seq) - 1)
 
 
 def windows(n, seq):
-    return LazySeq(itertools.izip_longest(*(seq[i::n] for i in range(n))))
+    """Returns a lazy sequence of lists of n items each"""
+    if 'zip_longest' in dir(itertools):
+        return itertools.zip_longest(*(seq[i::n] for i in range(n)))
+    else:
+        return itertools.izip_longest(*(set[i::n] for i in range(n)))
+
+def partition(n, seq):
+    """Returns a lazy sequence of lists of n items each"""
+    return windows(n, seq)
 
 
 def conj(seq, *items):

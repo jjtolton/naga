@@ -1,4 +1,5 @@
 import itertools
+from functools import reduce
 
 
 class LazySeq(object):
@@ -27,6 +28,9 @@ class LazySeq(object):
                 idx += 1
             except StopIteration:
                 raise StopIteration
+
+    def __next__(self):
+        return self[0]
 
     def __add__(self, other):
         return list(self) + list(other)
@@ -128,18 +132,24 @@ def main():
 
     print(even_nums[3:10])
 
-    seq = LazySeq(range(10))
+    seq = LazySeq(iter(range(10)))
+
+    print(list(seq))
+    print(list(seq))
     print(sorted(seq))
 
     print(list(seq + seq))
-    print (zip(seq, seq))
-    iterseq = iter(seq)
+    print(zip(seq, seq))
+    iterseq = LazySeq(iter(seq))
+
+
     print(next(iterseq))
     print(next(iterseq))
 
-    items = reduce(lambda x, y: x + range(100), range(50), LazySeq([2]))
+
+    # items = reduce(lambda x, y: x + range(100), range(50), LazySeq([2]))
     # print(len(items))
-    print(len(items))
+    # print(len(items))
     # print([items[i] for i in range(1000)])
     # print(len(list(items)))
     # for item in items:
@@ -148,7 +158,8 @@ def main():
     items2 = []
 
     # next(items2)
-    print(LazySeq(items2)[0])
+    # print(LazySeq(items2)[0])
+
 
 if __name__ == '__main__':
     main()
