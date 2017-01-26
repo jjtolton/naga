@@ -188,14 +188,11 @@ def explode(*ds):
     return LazySeq(itertools.chain(*map(lambda d: d.items(), ds)))
 
 
-def merge(*seqs):
+def merge(*ds):
     """Returns a dict that consists of the rest of the dicts merged onto
 the first.  If a key occurs in more than one dict, the mapping from
 the latter (left-to-right) will be the mapping in the result."""
-
-    return dict(rreduce(fn=lambda l, _: apply(lambda k, v: l + [(k, v)], _),
-                        seq=explode(*seqs),
-                        default=[]))
+    return reduce(lambda d, x: dict(d, **x), ds)
 
 
 def assoc(m, k, v):
