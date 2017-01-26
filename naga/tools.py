@@ -285,7 +285,7 @@ def keys2dict(val, *ks):
 
 
 def are_instances(items, types):
-    """Plural is isinstance"""
+    """Plural of isinstance"""
     return all(map(lambda x: isinstance(x, types), items))
 
 
