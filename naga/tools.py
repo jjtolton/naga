@@ -362,7 +362,7 @@ def windows(n, seq):
     if 'zip_longest' in dir(itertools):
         return itertools.zip_longest(*(seq[i::n] for i in range(n)))
     else:
-        return itertools.izip_longest(*(set[i::n] for i in range(n)))
+        return itertools.izip_longest(*(seq[i::n] for i in range(n)))
 
 def partition(n, seq):
     """Returns a lazy sequence of lists of n items each"""
