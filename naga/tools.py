@@ -1,7 +1,12 @@
 import itertools
+
+import collections
+import types
 from functools import reduce, partial
 
 seq_types = list, tuple, str
+
+nil = -1243901023098409
 
 
 def rreduce(fn, seq, default=None):
@@ -16,23 +21,27 @@ def rreduce(fn, seq, default=None):
     return reduce(fn, seq, default)
 
 
-def layreduce(fn, seq, default=None):
+def reductions(fn, seq, default=nil):
     """LazySeq version of reduce that returns 1 item at a time"""
 
-    def _lzreduce(fn, seq, default=None):
-        accum = default if somep(default) else first(seq)
-        _seq = iter(rest(seq))
-        while True:
-            yield accum
-            fst = first(_seq)
-            if fst is None:
-                raise StopIteration
+    if default is nil:
+        acc = first(seq)
+        x = second(seq)
+        s = rest(rest(seq))
+    else:
+        acc = default
+        x = first(seq)
+        s = rest(seq)
 
-            accum = fn(accum, fst)
-            if not _seq:
-                raise StopIteration
-
-    return _lzreduce(fn, seq, default)
+    yield acc
+    while True:
+        acc = fn(acc, x)
+        x = first(s)
+        s = rest(s)
+        yield acc
+        if len(s) == 0:
+            break
+    yield fn(acc, x)
 
 
 def get_in(d, ks, not_found=None):
@@ -54,6 +63,49 @@ def apply(fn, x):
     return fn(*x)
 
 
+def some(seq):
+    """"""
+    for e in seq:
+        if e:
+            return e
+    return False
+
+
+# def destructure(forms):
+#     if isinstance(forms, tuple):
+#         f = first(forms)
+#         args = rest(for)
+#
+#
+# def lispify(form):
+#     f = first(form)
+#     args, kwargs = destructure(rest(form))
+#     return lambda: f(*args, **kwargs)
+#
+#
+# def let(var, form, body):
+#     if isinstance(var, list):
+#         var = ', '.join(var)
+#     if isinstance(var, dict):
+#         var = ', '.join('{}={}'.format(*item) for item in var.items())
+#
+#     if isinstance(form, tuple):
+#         form = lispify(form)
+#         e = lispify(body)
+#
+#     return eval('lambda var: (body(var))(form())')
+
+
+
+def stab(forms, x):
+    if len(forms) == 0:
+        return x
+    form = first(forms)
+    f = first(form)
+    args = (x,) + tuple(rest(form))
+    return stab(rest(forms), f(*args))
+
+
 def dec(n):
     """dec[rement].  Return n - 1"""
     return n - 1
@@ -66,12 +118,13 @@ def inc(n):
 
 def first(iterable):
     """Returns the first item in the collection. If iterable evaluates to None, returns None."""
-    seq, test = itertools.tee(iterable)
-    try:
-        next(test)
-    except StopIteration:
-        return None
-    return nth(seq, 0)
+    if isinstance(iterable, seq_types):
+        return iterable[0]
+    if isinstance(iterable, collections.MutableMapping):
+        return dict([first(iterable.items())])
+    if isinstance(iterable, types.GeneratorType):
+        _, s = itertools.tee(iterable)
+        return next(s)
 
 
 def nth(seq, idx):
@@ -80,7 +133,7 @@ def nth(seq, idx):
     _, _seq = itertools.tee(seq)
     if isinstance(seq, seq_types):
         return seq[idx]
-    return next(itertools.islice(_seq, idx, idx+1))
+    return next(itertools.islice(_seq, idx, idx + 1))
 
 
 def second(seq):
@@ -148,19 +201,27 @@ stateful transducer"""
 
 def last(iterable):
     """Return the last item in an iterable, in linear time"""
-    _, seq = itertools.tee(iterable)
-    return next(itertools.islice(seq, -1, None))
+    if isinstance(iterable, seq_types):
+        return iterable[-1]
+    if isinstance(iterable, dict):
+        return first(iterable)
+    if isinstance(iterable, types.GeneratorType):
+        _, seq = itertools.tee(iterable)
+        return next(itertools.islice(seq, -1, None))
 
 
 def rest(iterable):
     """Returns a LazySeq of the items after the first. Will be an empty list if iterable is empty generator
     or initial item type if empty iterable"""
-    seq, test = itertools.tee(iterable)
-    try:
-        next(test)
-    except StopIteration:
-        return iterable if isinstance(iterable, (seq_types + (dict,))) else []
-    return itertools.islice(iterable, 1, None)
+    if isinstance(iterable, seq_types):
+        return iterable[1:]
+    if isinstance(iterable, collections.MutableMapping):
+        if len(iterable) == 0:
+            return iterable
+        return dissoc(iterable, first(iterable.keys()))
+
+    if isinstance(iterable, types.GeneratorType):
+        return itertools.islice(iterable, 1)
 
 
 def iterate(fn, x):
@@ -245,10 +306,12 @@ the result by calling fn(val-in-result, val-in-latter)."""
             dict(((k, v) if k not in d else (k, fn(d[k], x[k])) for k, v in x.items())).items())),
         ds)
 
+
 def merge_with_default(fn, default='null', *dicts):
     """Like merge_with, except all keys are initialized to default value specified to simplify the collision-fn.
     If no default is specified, will use the initial values of the last dictionary merged."""
     return merge_with(fn, valmap(lambda v: v if default is 'null' else default, merge(*dicts)), *dicts)
+
 
 def assoc_in(d, key_list, val):
     """Associates a value in a nested associative structure, where ks is a
@@ -260,14 +323,30 @@ keys into dictionaries.  I.e.:
 >>> assoc_in(d, [1, 2, 'A'], 'X')
 {1: {2: {3: 4,
         'A': 'X'}}"""
-    d1 = keys2dict(val, *key_list)
-    return recursive_dict_merge(d, d1)
+    if len(key_list) == 1:
+        return assoc(d, first(key_list), val)
+
+    if first(key_list) not in d:
+        return assoc(d, first(key_list), assoc_in({}, rest(key_list), val))
+
+    return assoc(d, first(key_list), assoc_in(d[first(key_list)], rest(key_list), val))
+
 
 def terminal_dict(*ds):
     return not (are_dicts(*ds) and all(map(lambda x: are_dicts(*x.values()), ds)))
 
+
 def terminal_dicts(*ds):
     return all(map(terminal_dict, ds))
+
+
+def get(d, k):
+    return d[k]
+
+
+def update(d, k, fn):
+    return assoc(d, k, fn(get(d, k)))
+
 
 def update_in(d, key_list, fn):
     """'Updates' a value in a nested associative structure, where ks is a
@@ -275,65 +354,80 @@ sequence of keys and f is a function that will take the old value
 and any supplied args and return the new value, and returns a new
 nested structure.  If any levels do not exist, hash-maps will be
 created."""
+    val = get_in(d, key_list)
+    if val is None:
+        f = lambda: fn()
+    else:
+        f = lambda: fn(val)
+    return assoc_in(d, key_list, f())
 
-    v = fn(get_in(d, key_list))
-    d1 = keys2dict(v, *key_list)
-    return merge_with(lambda a, b: recursive_dict_merge(a, b) if not are_dicts(a, b) else b, d, d1)
 
 def recursive_dict_merge(*ds):
     """Recursively merge dictionaries"""
     return merge_with(lambda a, b: recursive_dict_merge(a, b) if not terminal_dicts(a, b) else merge(a, b), *ds)
+
 
 def keys2dict(val, *ks):
     """Convert a value and a list of keys to a nested dictionary with the value at the leaf"""
     v_in = reduce(lambda x, y: {y: x}, (list(ks) + [val])[::-1])
     return v_in
 
+
 def are_instances(items, types):
     """Plural of isinstance"""
     return all(map(lambda x: isinstance(x, types), items))
 
+
 def are_dicts(*ds):
     return are_instances(ds, dict)
+
 
 def supassoc_in(d, val, k, *ks):
     """Like assoc_in, except collisions are handled by grouping into a list rather than merging"""
     ds = d, keys2dict(val, *itertools.chain([k], ks))
     return recursive_group_dicts(*ds)
 
+
 def recursive_group_dicts(*ds):
     """Like recursive_dict_merge, except handles recursive collisions by grouping into a list instead of merging"""
     return merge_with(lambda x, y: recursive_group_dicts(x, y) if not terminal_dicts(x, y) else {
         first(x.keys()): x.values() + y.values()}, *ds)
 
+
 def keyfilter(fn, d):
     # TODO: make purely functional when persistent vectors are finished
     return {k: v for k, v in d.items() if fn(k)}
+
 
 def valfilter(fn, d):
     """returns {k: v for k, v in d.items() if fn(v)}"""
     # TODO: make purely functional when persistent vectors are finished
     return {k: v for k, v in d.items() if fn(v)}
 
+
 def itemfilter(fn, d):
     """returns {k: v for k, v in d.items() if fn(k, v)}"""
     # TODO: make purely functional when persistent vectors are finished
     return {k: v for k, v in d.items() if fn(k, v)}
+
 
 def valmap(fn, d):
     """{k: fn(v) for k, v in d.items()}"""
     # TODO: make purely functional when persistent vectors are finished
     return {k: fn(v) for k, v in d.items()}
 
+
 def keymap(fn, d):
     """returns {fn(k): v for k, v in d.items()}"""
     # TODO: make purely functional when persistent vectors are finished
     return {fn(k): v for k, v in d.items()}
 
+
 def itemmap(fn, d):
     """returns dict(fn(k, v) for k, v in d.items())"""
     # TODO: make purely functional when persistent vectors are finished
     return dict(fn(k, v) for k, v in d.items())
+
 
 def nary(fn):
     """fn(a, b) --> fn(*x).  Only works if the output type is the same as the
@@ -349,13 +443,16 @@ def nary(fn):
 
     return _nary
 
+
 def append(*seqs):
     """Returns a LazySeq concatenation of iterables (works in constant time)."""
     return itertools.chain(*seqs)
 
+
 def pop(iterable):
     _, seq = itertools.tee(iterable)
     return itertools.islice(0, len(seq) - 1)
+
 
 def windows(n, seq):
     """Returns a lazy sequence of lists of n items each"""
@@ -364,22 +461,26 @@ def windows(n, seq):
     else:
         return itertools.izip_longest(*(seq[i::n] for i in range(n)))
 
+
 def partition(n, seq):
     """Returns a lazy sequence of lists of n items each"""
     return windows(n, seq)
 
+
 def conj(seq, *items):
     return itertools.chain(seq, items)
+
 
 def nonep(x):
     return x is None
 
+
 def complement(x):
     return not x
 
+
 def somep(x):
     return complement(nonep(x))
-
 
 
 if __name__ == '__main__':

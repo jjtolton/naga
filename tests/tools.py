@@ -7,7 +7,7 @@ import operator
 import itertools
 
 from naga.tools import apply, merge, assoc, dissoc, merge_with, merge_with_default, assoc_in, update_in, terminal_dict, \
-    windows, append, explode, conj, first, nth, rest, layreduce, take, iterate, drop
+    windows, append, explode, conj, first, nth, rest, reductions, take, iterate, drop
 
 
 class FunkyToolsTest(unittest.TestCase):
@@ -128,7 +128,7 @@ class FunkyToolsTest(unittest.TestCase):
         initial_d = assoc_in(c, ['thisis'], {'a': dict})
         expected_res = {'name': 'taco',
                         'thisis': {'b': dict}}
-        res = update_in(initial_d, ['thisis', 'b'], lambda x: dict)
+        res = update_in(initial_d, ['thisis'], lambda x: {'b': dict})
         self.assertEqual(expected_res, res)
 
     def test_terminal_dicts_id_terminal_dicts_correctly(self):
@@ -197,8 +197,8 @@ class FunkyToolsTest(unittest.TestCase):
 
         nums = list(range(5))
         expected_res = [0, 1, 3, 6, 10]
-        res = list(layreduce(fn=operator.add,
-                             seq=nums))
+        res = list(reductions(fn=operator.add,
+                              seq=nums))
         self.assertEqual(expected_res, res)
 
     def test_first_returns_first_on_str(self):
@@ -241,7 +241,7 @@ class FuncyToolsTest2(unittest.TestCase):
     def test_explode_convs_list_dicts_to_list_tuples(self):
         ds = self.ds
         expected_res = {(1, 2), (3, 4), (4, 5), ('a', 'b'), ('c', 'd'), ('e', 'f'), ('name', 'taco')}
-        res = set(apply(*ds))
+        res = set(explode(*ds))
         self.assertEqual(expected_res, res)
 
     def test_merge_merges_dicts(self):
@@ -344,7 +344,7 @@ class FuncyToolsTest2(unittest.TestCase):
         initial_d = assoc_in(c, ['thisis'], {'a': dict})
         expected_res = {'name': 'taco',
                         'thisis': {'b': dict}}
-        res = update_in(initial_d, ['thisis', 'b'], dict)
+        res = update_in(initial_d, ['thisis'], lambda x: {'b': dict})
         self.assertEqual(expected_res, res)
 
     def test_terminal_dicts_id_terminal_dicts_correctly(self):
