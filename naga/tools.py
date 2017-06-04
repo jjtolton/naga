@@ -216,9 +216,7 @@ stateful transducer"""
     if x is None:
         return partial(compose, fns)
 
-    return rreduce(fn=lambda a, b: b(a),
-                   seq=fns,
-                   default=x)
+    return reduce(lambda a, b: b(a), fns, x)
 
 
 def comp(*fns):
