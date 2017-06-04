@@ -1,8 +1,8 @@
-import itertools
-
 import collections
-import types
+import itertools
 from functools import reduce, partial
+
+import types
 
 seq_types = list, tuple, str
 
@@ -64,46 +64,68 @@ def apply(fn, x):
 
 
 def some(seq):
-    """"""
+    """Returns first truthy value or False"""
     for e in seq:
         if e:
             return e
     return False
 
 
-# def destructure(forms):
-#     if isinstance(forms, tuple):
-#         f = first(forms)
-#         args = rest(for)
-#
-#
-# def lispify(form):
-#     f = first(form)
-#     args, kwargs = destructure(rest(form))
-#     return lambda: f(*args, **kwargs)
-#
-#
-# def let(var, form, body):
-#     if isinstance(var, list):
-#         var = ', '.join(var)
-#     if isinstance(var, dict):
-#         var = ', '.join('{}={}'.format(*item) for item in var.items())
-#
-#     if isinstance(form, tuple):
-#         form = lispify(form)
-#         e = lispify(body)
-#
-#     return eval('lambda var: (body(var))(form())')
+def stab(x, *forms):
+    """Equivalent to Clojure's -> macro, requires special syntax (see example)
+    
+Threads the expr through the forms. Inserts x as the
+second item in the first form, making a list of it if it is not a
+list already. If there are more forms, inserts the first form as the
+second item in second form, etc.
 
-
-
-def stab(forms, x):
+Example:
+    
+>>> stab({}, (assoc, 1, 2), (assoc, 'cat', 'dog'))
+{1: 2, 'cat': 'dog'}
+"""
     if len(forms) == 0:
         return x
-    form = first(forms)
+    if not isinstance(first(forms), tuple):
+        form = (first(forms),)
+    else:
+        form = first(forms)
+
     f = first(form)
     args = (x,) + tuple(rest(form))
-    return stab(rest(forms), f(*args))
+    return stab(f(*args), *rest(forms))
+
+
+# alias in case you don't like the name stab
+threadfirst = threadf = stab
+
+
+def stabb(x, *forms):
+    """Equivalent to Clojure's ->> macro, requires special syntax (see example)
+    
+Threads the expr through the forms. Inserts x as the
+last item in the first form, making a list of it if it is not a
+list already. If there are more forms, inserts the first form as the
+last item in second form, etc.
+
+Example:
+>>> stabb(range(10), (filter, lambda x: x % 2 == 0), (map, lambda x: x * 2), list)
+[0, 4, 8, 12, 16]
+"""
+    if len(forms) == 0:
+        return x
+    if not isinstance(first(forms), tuple):
+        form = (first(forms),)
+    else:
+        form = first(forms)
+
+    f = first(form)
+    args = tuple(rest(form)) + (x,)
+    return stabb(f(*args), *rest(forms))
+
+
+# alias in case you don't like the name stabb
+threadlast = threadl = stabb
 
 
 def dec(n):
@@ -189,7 +211,7 @@ def compose(fns, x=None):
     """Takes a set of functions and returns a fn that is the composition
 of those fns.  The returned fn takes a variable number of args,
 applies the rightmost of fns to the args, the next
-fn (right-to-left) to the result, etc.  If no value is supplied, returns a
+fn (left-to-right) to the result, etc.  If no value is supplied, returns a
 stateful transducer"""
     if x is None:
         return partial(compose, fns)
@@ -197,6 +219,16 @@ stateful transducer"""
     return rreduce(fn=lambda a, b: b(a),
                    seq=fns,
                    default=x)
+
+
+def comp(*fns):
+    """Takes a set of functions and returns a fn that is the composition
+of those fns.  The returned fn takes a variable number of args,
+applies the rightmost of fns to the args, the next
+fn (left-to-right) to the result, etc.  Returns a
+stateful transducer"""
+
+    return partial(reduce, lambda a, b: b(a), reversed(fns))
 
 
 def last(iterable):
@@ -259,6 +291,10 @@ Returns a stateful transducer when no collection is provided."""
 def explode(*ds):
     """Returns a LazySeq of the concatenated (key,value) pairs of the provided dictionaries"""
     return itertools.chain(*map(lambda d: d.items(), ds))
+
+
+def identity(x):
+    return x
 
 
 def merge(*ds):
@@ -344,8 +380,8 @@ def get(d, k):
     return d[k]
 
 
-def update(d, k, fn):
-    return assoc(d, k, fn(get(d, k)))
+def update(d, k, fn, *args, **kwargs):
+    return assoc(d, k, fn(get(d, k), *args, **kwargs))
 
 
 def update_in(d, key_list, fn):
@@ -446,7 +482,7 @@ def nary(fn):
 
 def append(*seqs):
     """Returns a LazySeq concatenation of iterables (works in constant time)."""
-    return itertools.chain(*seqs)
+    return list(itertools.chain(*seqs))
 
 
 def pop(iterable):
@@ -468,7 +504,7 @@ def partition(n, seq):
 
 
 def conj(seq, *items):
-    return itertools.chain(seq, items)
+    return list(itertools.chain(seq, items))
 
 
 def nonep(x):
@@ -483,5 +519,15 @@ def somep(x):
     return complement(nonep(x))
 
 
-if __name__ == '__main__':
-    print('test')
+def mapv(fn, *colls):
+    return list(map(fn, *colls))
+
+def filterv(fn, *colls):
+    return list(filter(fn, *colls))
+
+Result = collections.namedtuple('Result', field_names=['args', 'kwargs'])
+
+
+def ffirst(x):
+    return first(first(x))
+

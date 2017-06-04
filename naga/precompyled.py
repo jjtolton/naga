@@ -17,8 +17,7 @@ def iconize(fn):
 def runall(pc_fn):
     if isinstance(pc_fn, FuncWrap):
         return pc_fn.fn(*map(lambda x: runall(x), pc_fn.args),
-                        **dict(map(apply(lambda k, v: (runall(k), runall(v))),
-                                   pc_fn.kwargs.items())))
+                        **{runall(k): runall(v) for k, v in pc_fn.kwargs.items()})
     return pc_fn
 
 
