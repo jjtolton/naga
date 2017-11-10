@@ -53,7 +53,12 @@ is not present, or the not-found value if supplied.
     :param not_found: what to return if keys not in d
     :return: val
     """
-    return reduce(lambda x, y: x.get(y, {}), ks, d) or not_found
+    res = reduce(lambda x, y: x.get(y, {}), ks, d)
+    if res is None:
+        return not_found
+    else:
+        return res
+
 
 
 def apply(fn, x):
