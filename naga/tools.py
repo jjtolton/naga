@@ -1,12 +1,14 @@
 import collections
 import itertools
-from functools import reduce, partial
-
 import types
+from functools import reduce, partial
 
 seq_types = list, tuple, str
 
-nil = -1243901023098409
+
+class nil:
+    def __bool__(self):
+        return False
 
 
 def rreduce(fn, seq, default=None):
@@ -44,6 +46,14 @@ def reductions(fn, seq, default=nil):
     yield fn(acc, x)
 
 
+def cond(x, *forms):
+    if len(forms) % 2 != 0:
+        raise Exception("cond requires an even number of forms!")
+    for t, a in partition(2, forms):
+        if t(x):
+            return a
+
+
 def get_in(d, ks, not_found=None):
     """Returns the value in a nested associative structure,
 where ks is a sequence of keys. Returns nil if the key
@@ -53,12 +63,10 @@ is not present, or the not-found value if supplied.
     :param not_found: what to return if keys not in d
     :return: val
     """
-    res = reduce(lambda x, y: x.get(y, {}), ks, d)
-    if res is None:
-        return not_found
+    if len(ks) == 1:
+        return get(d, first(ks), not_found)
     else:
-        return res
-
+        return get(get(d, first(ks)), rest(ks), not_found)
 
 
 def apply(fn, x):
@@ -68,21 +76,26 @@ def apply(fn, x):
     return fn(*x)
 
 
-def some(seq):
-    """Returns first truthy value or False"""
+def some(fn, seq=None):
+    """Returns first truthy value or False.  Can accept a predicate as first argument."""
+
+    if not isinstance(fn, (types.FunctionType, types.MethodType)):
+        return some(lambda x: x, seq=fn)
+
     for e in seq:
-        if e:
+        if fn(e):
             return e
     return False
 
 
-def mapv(f, x):
+def mapv(f, *colls):
     """Returns a list consisting of the result of applying f to the
 set of first items of each coll, followed by applying f to the set
 of second items in each coll, until any one of the colls is
 exhausted.  Any remaining items in other colls are ignored. Function
 f should accept number-of-colls arguments."""
-    return list(map(f, x))
+    return list(map(f, *colls))
+
 
 def stab(x, *forms):
     """Equivalent to Clojure's -> macro, requires special syntax (see example)
@@ -153,22 +166,13 @@ def inc(n):
 
 def first(iterable):
     """Returns the first item in the collection. If iterable evaluates to None, returns None."""
-    if isinstance(iterable, seq_types):
-        return iterable[0]
-    if isinstance(iterable, collections.MutableMapping):
-        return dict([first(iterable.items())])
-    if isinstance(iterable, types.GeneratorType):
-        _, s = itertools.tee(iterable)
-        return next(s)
+    return dispatch(iterable).first(iterable)
 
 
 def nth(seq, idx):
     """Return the nth item of a sequence.  Constant time if list, tuple, or str;
     linear time if a generator or LazySeq"""
-    _, _seq = itertools.tee(seq)
-    if isinstance(seq, seq_types):
-        return seq[idx]
-    return next(itertools.islice(_seq, idx, idx + 1))
+    return get(seq, idx)
 
 
 def second(seq):
@@ -244,27 +248,13 @@ stateful transducer"""
 
 def last(iterable):
     """Return the last item in an iterable, in linear time"""
-    if isinstance(iterable, seq_types):
-        return iterable[-1]
-    if isinstance(iterable, dict):
-        return first(iterable)
-    if isinstance(iterable, types.GeneratorType):
-        _, seq = itertools.tee(iterable)
-        return next(itertools.islice(seq, -1, None))
+    return dispatch(iterable).last(iterable)
 
 
 def rest(iterable):
     """Returns a LazySeq of the items after the first. Will be an empty list if iterable is empty generator
     or initial item type if empty iterable"""
-    if isinstance(iterable, seq_types):
-        return iterable[1:]
-    if isinstance(iterable, collections.MutableMapping):
-        if len(iterable) == 0:
-            return iterable
-        return dissoc(iterable, first(iterable.keys()))
-
-    if isinstance(iterable, types.GeneratorType):
-        return itertools.islice(iterable, 1)
+    return dispatch(iterable).rest(iterable)
 
 
 def iterate(fn, x):
@@ -299,6 +289,16 @@ Returns a stateful transducer when no collection is provided."""
     return itertools.islice(seq, n, None)
 
 
+def gtake(n, seq=None):
+    "A greedy form of take"
+    return list(take(n, seq))
+
+
+def gdrop(n, seq=None):
+    "A greedy form of drop"
+    return list(drop(n, seq))
+
+
 def explode(*ds):
     """Returns a LazySeq of the concatenated (key,value) pairs of the provided dictionaries"""
     return itertools.chain(*map(lambda d: d.items(), ds))
@@ -320,26 +320,14 @@ def assoc(m, k, v):
   same (hashed/sorted) type, that contains the mapping of key(s) to
   val(s). When applied to a sequence, returns a new sequence of that
   type that contains val v at index k."""
-
-    if isinstance(m, seq_types):
-        return append(m[:k] + [v] + m[k + 1:])
-
-    return merge(m, {k: v})
+    return update(m, k, lambda *_, **__: v)
 
 
 def dissoc(d, *ks):
     """dissoc[iate]. If d is a dict, returns a new map of the same (hashed/sorted) type,
 that does not contain a mapping for key(s).  If d is a str, returns a string without the letters listed as keys.
 For any other sequence type, returns a LazySeq with the listed keys filtered."""
-
-    if isinstance(d, str):
-        filtered = filter(lambda x: x not in ks, d)
-        return ''.join(filtered)
-
-    if isinstance(d, seq_types):
-        return filter(lambda x: x not in ks, d)
-
-    return keyfilter(lambda x: x not in ks, d)
+    return dispatch(d).dissoc(d, *ks)
 
 
 def merge_with(fn, *ds):
@@ -354,10 +342,10 @@ the result by calling fn(val-in-result, val-in-latter)."""
         ds)
 
 
-def merge_with_default(fn, default='null', *dicts):
+def merge_with_default(fn, default=nil, *dicts):
     """Like merge_with, except all keys are initialized to default value specified to simplify the collision-fn.
     If no default is specified, will use the initial values of the last dictionary merged."""
-    return merge_with(fn, valmap(lambda v: v if default is 'null' else default, merge(*dicts)), *dicts)
+    return merge_with(fn, valmap(lambda v: v if default is nil else default, merge(*dicts)), *dicts)
 
 
 def assoc_in(d, key_list, val):
@@ -374,9 +362,9 @@ keys into dictionaries.  I.e.:
         return assoc(d, first(key_list), val)
 
     if first(key_list) not in d:
-        return assoc(d, first(key_list), assoc_in({}, rest(key_list), val))
+        return update(d, first(key_list), lambda *_, **__: assoc_in({}, rest(key_list), val))
 
-    return assoc(d, first(key_list), assoc_in(d[first(key_list)], rest(key_list), val))
+    return update(d, first(key_list), assoc_in, rest(key_list), val)
 
 
 def terminal_dict(*ds):
@@ -387,26 +375,194 @@ def terminal_dicts(*ds):
     return all(map(terminal_dict, ds))
 
 
-def get(d, k):
-    return d[k]
+def get(d, k, not_found=None):
+    return dispatch(d).get(d, k, not_found)
 
 
 def update(d, k, fn, *args, **kwargs):
-    return assoc(d, k, fn(get(d, k), *args, **kwargs))
+    return dispatch(d).update(d, k, fn, *args, **kwargs)
 
 
-def update_in(d, key_list, fn):
+def fpartial(f, *args, **kwargs):
+    return lambda x: f(*((x,) + args), **kwargs)
+
+
+class Protocol:
+    @staticmethod
+    def update(d, k, fn, *args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def get(d, k, not_found=None):
+        raise NotImplementedError
+
+    @staticmethod
+    def first(d):
+        return next(iter(d))
+
+    @staticmethod
+    def rest(d):
+        raise NotImplementedError
+
+    @staticmethod
+    def last(d):
+        raise NotImplementedError
+
+    @staticmethod
+    def dissoc(d, *ks):
+        raise NotImplementedError
+
+
+class Dict(Protocol):
+    @staticmethod
+    def rest(d):
+        res = iter(d)
+        next(res)
+        return res
+
+    @staticmethod
+    def first(d):
+        return next(iter(k for k in d))
+
+    @staticmethod
+    def update(d, k, fn, *args, **kwargs):
+        return {a: b for a, b in itertools.chain(d.items(), [(k, fn(get(d, k), *args, **kwargs))])}
+
+    @staticmethod
+    def get(d, k, not_found=None):
+        return d.get(k, not_found)
+
+    @staticmethod
+    def last(d):
+        return Dict.first(d)
+
+    @staticmethod
+    def rest(d):
+        return list(d)[1:] or {}
+
+    @staticmethod
+    def dissoc(d, *ks):
+        ks = set(ks)
+        return keyfilter(lambda x: x not in ks, d)
+
+
+class List(Protocol):
+    @staticmethod
+    def get(d, k, not_found=None):
+        return d[k]
+
+    @staticmethod
+    def update(d, k, fn, *args, **kwargs):
+        return d[:k] + [fn(get(d, k), *args, **kwargs)] + d[k + 1:]
+
+    @staticmethod
+    def last(d):
+        return d[-1]
+
+    @staticmethod
+    def rest(d):
+        return d[1:]
+
+    @staticmethod
+    def dissoc(d, *ks):
+        ks = set(ks)
+        return filterv(lambda x: x not in ks, d)
+
+
+class Tuple(Protocol):
+    @staticmethod
+    def dissoc(d, *ks):
+        ks = set(ks)
+        return tuple(filter(lambda x: x not in ks, d))
+
+    @staticmethod
+    def get(d, k, not_found=None):
+        return d[k]
+
+    @staticmethod
+    def update(d, k, fn, *args, **kwargs):
+        return d[:k] + (fn(get(d, k), *args, **kwargs),) + d[k + 1:]
+
+    @staticmethod
+    def last(d):
+        return d[-1]
+
+    @staticmethod
+    def rest(d):
+        return d[1:]
+
+
+class String(Protocol):
+    @staticmethod
+    def last(d):
+        return d[-1]
+
+    @staticmethod
+    def get(d, k, not_found=None):
+        return d[k]
+
+    @staticmethod
+    def update(d, k, fn, *args, **kwargs):
+        return d[:k] + fn(get(d, k), *args, **kwargs) + d[k + 1]
+
+    @staticmethod
+    def rest(d):
+        return d[1:]
+
+    @staticmethod
+    def dissoc(d, *ks):
+        return ''.join(filter(lambda x: x not in ks, d))
+
+
+class Iterable(Protocol):
+    @staticmethod
+    def last(d):
+        try:
+            for x in d:
+                pass
+            return x
+        except NameError:
+            return None
+
+    @staticmethod
+    def first(d):
+        return next(iter(d))
+
+    @staticmethod
+    def rest(d):
+        try:
+            next(d)
+            return d
+        except StopIteration:
+            return None
+
+
+class Cons(Protocol):
+    @staticmethod
+    def first(d):
+        return d(0)
+
+
+def update_in(d, key_list, fn, *args, **kwargs):
     """'Updates' a value in a nested associative structure, where ks is a
 sequence of keys and f is a function that will take the old value
 and any supplied args and return the new value, and returns a new
 nested structure.  If any levels do not exist, hash-maps will be
 created."""
-    val = get_in(d, key_list)
-    if val is None:
-        f = lambda: fn()
-    else:
-        f = lambda: fn(val)
-    return assoc_in(d, key_list, f())
+    if len(key_list) == 1:
+        return update(d, first(key_list), fn, *args, **kwargs)
+
+    return update(d, first(key_list), update_in, rest(key_list), fn, *args, **kwargs)
+
+
+def dispatch(x, dispatch_table=None):
+    Table = dispatch_table or (fpartial(isinstance, collections.MutableMapping), Dict,
+                               fpartial(isinstance, str), String,
+                               fpartial(isinstance, list), List,
+                               fpartial(isinstance, tuple), Tuple,
+                               lambda _: True, type(x))
+
+    return cond(x, *Table)
 
 
 def recursive_dict_merge(*ds):
@@ -442,37 +598,31 @@ def recursive_group_dicts(*ds):
 
 
 def keyfilter(fn, d):
-    # TODO: make purely functional when persistent vectors are finished
     return {k: v for k, v in d.items() if fn(k)}
 
 
 def valfilter(fn, d):
     """returns {k: v for k, v in d.items() if fn(v)}"""
-    # TODO: make purely functional when persistent vectors are finished
     return {k: v for k, v in d.items() if fn(v)}
 
 
 def itemfilter(fn, d):
     """returns {k: v for k, v in d.items() if fn(k, v)}"""
-    # TODO: make purely functional when persistent vectors are finished
     return {k: v for k, v in d.items() if fn(k, v)}
 
 
 def valmap(fn, d):
     """{k: fn(v) for k, v in d.items()}"""
-    # TODO: make purely functional when persistent vectors are finished
     return {k: fn(v) for k, v in d.items()}
 
 
 def keymap(fn, d):
     """returns {fn(k): v for k, v in d.items()}"""
-    # TODO: make purely functional when persistent vectors are finished
     return {fn(k): v for k, v in d.items()}
 
 
 def itemmap(fn, d):
     """returns dict(fn(k, v) for k, v in d.items())"""
-    # TODO: make purely functional when persistent vectors are finished
     return dict(fn(k, v) for k, v in d.items())
 
 
@@ -492,7 +642,7 @@ def nary(fn):
 
 
 def append(*seqs):
-    """Returns a LazySeq concatenation of iterables (works in constant time)."""
+    """Join sequences"""
     return list(itertools.chain(*seqs))
 
 
@@ -530,15 +680,13 @@ def somep(x):
     return complement(nonep(x))
 
 
-def mapv(fn, *colls):
-    return list(map(fn, *colls))
-
 def filterv(fn, *colls):
+    "A greedy version of filter"
     return list(filter(fn, *colls))
+
 
 Result = collections.namedtuple('Result', field_names=['args', 'kwargs'])
 
 
 def ffirst(x):
     return first(first(x))
-
