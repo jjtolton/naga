@@ -556,13 +556,18 @@ created."""
 
 
 def dispatch(x, dispatch_table=None):
-    Table = dispatch_table or (fpartial(isinstance, collections.MutableMapping), Dict,
-                               fpartial(isinstance, str), String,
-                               fpartial(isinstance, list), List,
-                               fpartial(isinstance, tuple), Tuple,
-                               lambda _: True, type(x))
+    Table = {dict: lambda: Dict,
+             list: lambda: List,
+             str: lambda: String,
+             tuple: lambda: Tuple}
 
-    return cond(x, *Table)
+    Lookup = dispatch_table or (fpartial(isinstance, collections.MutableMapping), Dict,
+                                fpartial(isinstance, str), String,
+                                fpartial(isinstance, list), List,
+                                fpartial(isinstance, tuple), Tuple,
+                                lambda _: True, type(x))
+
+    return Table.get(type(x), lambda: cond(x, *Lookup))()
 
 
 def recursive_dict_merge(*ds):
