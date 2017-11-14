@@ -12,6 +12,7 @@ class nil:
 
 
 def rreduce(fn, seq, default=None):
+
     """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
     to functools.reduce"""
 
@@ -24,7 +25,7 @@ def rreduce(fn, seq, default=None):
 
 
 def reductions(fn, seq, default=nil):
-    """LazySeq version of reduce that returns 1 item at a time"""
+    """generator version of reduce that returns 1 item at a time"""
 
     if default is nil:
         acc = first(seq)
@@ -171,7 +172,7 @@ def first(iterable):
 
 def nth(seq, idx):
     """Return the nth item of a sequence.  Constant time if list, tuple, or str;
-    linear time if a generator or LazySeq"""
+    linear time if a generator"""
     return get(seq, idx)
 
 
@@ -252,13 +253,13 @@ def last(iterable):
 
 
 def rest(iterable):
-    """Returns a LazySeq of the items after the first. Will be an empty list if iterable is empty generator
+    """Returns a generator of the items after the first. Will be an empty list if iterable is empty generator
     or initial item type if empty iterable"""
     return dispatch(iterable).rest(iterable)
 
 
 def iterate(fn, x):
-    """Returns a LazySeq of x, (f x), (f (f x)) etc. f must be free of side-effects"""
+    """Returns a generator of x, (f x), (f (f x)) etc. f must be free of side-effects"""
 
     def _iterate(fn, x):
         val = x
@@ -300,7 +301,7 @@ def gdrop(n, seq=None):
 
 
 def explode(*ds):
-    """Returns a LazySeq of the concatenated (key,value) pairs of the provided dictionaries"""
+    """Returns a generator of the concatenated (key,value) pairs of the provided dictionaries"""
     return itertools.chain(*map(lambda d: d.items(), ds))
 
 
@@ -326,7 +327,7 @@ def assoc(m, k, v):
 def dissoc(d, *ks):
     """dissoc[iate]. If d is a dict, returns a new map of the same (hashed/sorted) type,
 that does not contain a mapping for key(s).  If d is a str, returns a string without the letters listed as keys.
-For any other sequence type, returns a LazySeq with the listed keys filtered."""
+For any other sequence type, returns a generator with the listed keys filtered."""
     return dispatch(d).dissoc(d, *ks)
 
 
