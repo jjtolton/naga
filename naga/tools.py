@@ -3,6 +3,8 @@ import itertools
 import types
 from functools import reduce, partial
 
+from naga.utils import Namespaced
+
 seq_types = list, tuple, str
 
 
@@ -12,7 +14,6 @@ class nil:
 
 
 def rreduce(fn, seq, default=None):
-
     """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
     to functools.reduce"""
 
@@ -167,7 +168,7 @@ def inc(n):
 
 def first(iterable):
     """Returns the first item in the collection. If iterable evaluates to None, returns None."""
-    return dispatch(iterable).first(iterable)
+    return _reflect(iterable).first(iterable)
 
 
 def nth(seq, idx):
@@ -249,13 +250,13 @@ stateful transducer"""
 
 def last(iterable):
     """Return the last item in an iterable, in linear time"""
-    return dispatch(iterable).last(iterable)
+    return _reflect(iterable).last(iterable)
 
 
 def rest(iterable):
     """Returns a generator of the items after the first. Will be an empty list if iterable is empty generator
     or initial item type if empty iterable"""
-    return dispatch(iterable).rest(iterable)
+    return _reflect(iterable).rest(iterable)
 
 
 def iterate(fn, x):
@@ -328,7 +329,7 @@ def dissoc(d, *ks):
     """dissoc[iate]. If d is a dict, returns a new map of the same (hashed/sorted) type,
 that does not contain a mapping for key(s).  If d is a str, returns a string without the letters listed as keys.
 For any other sequence type, returns a generator with the listed keys filtered."""
-    return dispatch(d).dissoc(d, *ks)
+    return _reflect(d).dissoc(d, *ks)
 
 
 def merge_with(fn, *ds):
@@ -377,163 +378,146 @@ def terminal_dicts(*ds):
 
 
 def get(d, k, not_found=None):
-    return dispatch(d).get(d, k, not_found)
+    return _reflect(d).get(d, k, not_found)
 
 
 def update(d, k, fn, *args, **kwargs):
-    return dispatch(d).update(d, k, fn, *args, **kwargs)
+    return _reflect(d).update(d, k, fn, *args, **kwargs)
 
 
 def fpartial(f, *args, **kwargs):
     return lambda x: f(*((x,) + args), **kwargs)
 
 
-class Protocol:
-    @staticmethod
+# noinspection PyMethodParameters
+class Protocol(Namespaced):
     def update(d, k, fn, *args, **kwargs):
         raise NotImplementedError
 
-    @staticmethod
     def get(d, k, not_found=None):
         raise NotImplementedError
 
-    @staticmethod
     def first(d):
         return next(iter(d))
 
-    @staticmethod
     def rest(d):
         raise NotImplementedError
 
-    @staticmethod
     def last(d):
         raise NotImplementedError
 
-    @staticmethod
     def dissoc(d, *ks):
         raise NotImplementedError
 
 
+# noinspection PyMethodParameters
 class Dict(Protocol):
-    @staticmethod
     def rest(d):
         res = iter(d)
-        next(res)
-        return res
+        try:
+            next(res)
+            return res
+        except StopIteration:
+            return {}
 
-    @staticmethod
     def first(d):
         return next(iter(k for k in d))
 
-    @staticmethod
     def update(d, k, fn, *args, **kwargs):
         return {a: b for a, b in itertools.chain(d.items(), [(k, fn(get(d, k), *args, **kwargs))])}
 
-    @staticmethod
     def get(d, k, not_found=None):
         return d.get(k, not_found)
 
-    @staticmethod
     def last(d):
         return Dict.first(d)
 
-    @staticmethod
-    def rest(d):
-        return list(d)[1:] or {}
-
-    @staticmethod
     def dissoc(d, *ks):
         ks = set(ks)
         return keyfilter(lambda x: x not in ks, d)
 
 
+# noinspection PyMethodParameters
 class List(Protocol):
-    @staticmethod
     def get(d, k, not_found=None):
         return d[k]
 
-    @staticmethod
     def update(d, k, fn, *args, **kwargs):
         return d[:k] + [fn(get(d, k), *args, **kwargs)] + d[k + 1:]
 
-    @staticmethod
     def last(d):
         return d[-1]
 
-    @staticmethod
     def rest(d):
         return d[1:]
 
-    @staticmethod
     def dissoc(d, *ks):
         ks = set(ks)
         return filterv(lambda x: x not in ks, d)
 
 
+# noinspection PyMethodParameters
 class Tuple(Protocol):
-    @staticmethod
     def dissoc(d, *ks):
         ks = set(ks)
         return tuple(filter(lambda x: x not in ks, d))
 
-    @staticmethod
     def get(d, k, not_found=None):
         return d[k]
 
-    @staticmethod
     def update(d, k, fn, *args, **kwargs):
         return d[:k] + (fn(get(d, k), *args, **kwargs),) + d[k + 1:]
 
-    @staticmethod
     def last(d):
         return d[-1]
 
-    @staticmethod
     def rest(d):
         return d[1:]
 
 
+# noinspection PyMethodParameters
 class String(Protocol):
-    @staticmethod
     def last(d):
         return d[-1]
 
-    @staticmethod
     def get(d, k, not_found=None):
         return d[k]
 
-    @staticmethod
     def update(d, k, fn, *args, **kwargs):
         return d[:k] + fn(get(d, k), *args, **kwargs) + d[k + 1]
 
-    @staticmethod
     def rest(d):
         return d[1:]
 
-    @staticmethod
     def dissoc(d, *ks):
         return ''.join(filter(lambda x: x not in ks, d))
 
 
+# noinspection PyMethodParameters
 class Set(Protocol):
-    @staticmethod
     def get(d, k, not_found=None):
         if k in d:
             return k
         return not_found
 
-    @staticmethod
     def update(d, k, fn, *args, **kwargs):
         if k in d:
             return (d - {k}) | {fn(k, *args, **kwargs)}
 
-    @staticmethod
     def dissoc(d, *ks):
         return d - {k for k in ks}
 
+    def rest(d):
+        res = iter(d)
+        try:
+            next(res)
+            return set(res)
+        except StopIteration:
+            return set()
 
+
+# noinspection PyMethodParameters
 class Iterable(Protocol):
-    @staticmethod
     def last(d):
         try:
             for x in d:
@@ -542,23 +526,15 @@ class Iterable(Protocol):
         except NameError:
             return None
 
-    @staticmethod
     def first(d):
         return next(iter(d))
 
-    @staticmethod
     def rest(d):
         try:
             next(d)
             return d
         except StopIteration:
             return None
-
-
-class Cons(Protocol):
-    @staticmethod
-    def first(d):
-        return d(0)
 
 
 def update_in(d, key_list, fn, *args, **kwargs):
@@ -573,19 +549,15 @@ created."""
     return update(d, first(key_list), update_in, rest(key_list), fn, *args, **kwargs)
 
 
-def dispatch(x, dispatch_table=None):
+def _reflect(x):
+    """Returns associated protocol for builtin data-structures, otherwise returns provided class"""
     Table = {dict: lambda: Dict,
              list: lambda: List,
              str: lambda: String,
-             tuple: lambda: Tuple}
+             tuple: lambda: Tuple,
+             set: lambda: Set}
 
-    Lookup = dispatch_table or (fpartial(isinstance, collections.MutableMapping), Dict,
-                                fpartial(isinstance, str), String,
-                                fpartial(isinstance, list), List,
-                                fpartial(isinstance, tuple), Tuple,
-                                lambda _: True, type(x))
-
-    return Table.get(type(x), lambda: cond(x, *Lookup))()
+    return Table.get(type(x), x)()
 
 
 def recursive_dict_merge(*ds):
@@ -692,10 +664,12 @@ def conj(seq, *items):
 
 
 def nonep(x):
+    """Predicate: x is None"""
     return x is None
 
 
 def complement(x):
+    """Not x"""
     return not x
 
 
