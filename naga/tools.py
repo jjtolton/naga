@@ -515,6 +515,23 @@ class String(Protocol):
         return ''.join(filter(lambda x: x not in ks, d))
 
 
+class Set(Protocol):
+    @staticmethod
+    def get(d, k, not_found=None):
+        if k in d:
+            return k
+        return not_found
+
+    @staticmethod
+    def update(d, k, fn, *args, **kwargs):
+        if k in d:
+            return (d - {k}) | {fn(k, *args, **kwargs)}
+
+    @staticmethod
+    def dissoc(d, *ks):
+        return d - {k for k in ks}
+
+
 class Iterable(Protocol):
     @staticmethod
     def last(d):
