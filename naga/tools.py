@@ -13,18 +13,6 @@ class nil:
         return False
 
 
-def rreduce(fn, seq, default=None):
-    """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
-    to functools.reduce"""
-
-    # if two arguments
-    if default is None:
-        return reduce(fn, seq)
-
-    # if three arguments
-    return reduce(fn, seq, default)
-
-
 def reductions(fn, seq, default=nil):
     """generator version of reduce that returns 1 item at a time"""
 
@@ -389,152 +377,6 @@ def fpartial(f, *args, **kwargs):
     return lambda x: f(*((x,) + args), **kwargs)
 
 
-# noinspection PyMethodParameters
-class Protocol(Namespaced):
-    def update(d, k, fn, *args, **kwargs):
-        raise NotImplementedError
-
-    def get(d, k, not_found=None):
-        raise NotImplementedError
-
-    def first(d):
-        return next(iter(d))
-
-    def rest(d):
-        raise NotImplementedError
-
-    def last(d):
-        raise NotImplementedError
-
-    def dissoc(d, *ks):
-        raise NotImplementedError
-
-
-# noinspection PyMethodParameters
-class Dict(Protocol):
-    def rest(d):
-        res = iter(d)
-        try:
-            next(res)
-            return res
-        except StopIteration:
-            return {}
-
-    def first(d):
-        return next(iter(k for k in d))
-
-    def update(d, k, fn, *args, **kwargs):
-        return {a: b for a, b in itertools.chain(d.items(), [(k, fn(get(d, k), *args, **kwargs))])}
-
-    def get(d, k, not_found=None):
-        return d.get(k, not_found)
-
-    def last(d):
-        return Dict.first(d)
-
-    def dissoc(d, *ks):
-        ks = set(ks)
-        return keyfilter(lambda x: x not in ks, d)
-
-
-# noinspection PyMethodParameters
-class List(Protocol):
-    def get(d, k, not_found=None):
-        return d[k]
-
-    def update(d, k, fn, *args, **kwargs):
-        return d[:k] + [fn(get(d, k), *args, **kwargs)] + d[k + 1:]
-
-    def last(d):
-        return d[-1]
-
-    def rest(d):
-        return d[1:]
-
-    def dissoc(d, *ks):
-        ks = set(ks)
-        return filterv(lambda x: x not in ks, d)
-
-
-# noinspection PyMethodParameters
-class Tuple(Protocol):
-    def dissoc(d, *ks):
-        ks = set(ks)
-        return tuple(filter(lambda x: x not in ks, d))
-
-    def get(d, k, not_found=None):
-        return d[k]
-
-    def update(d, k, fn, *args, **kwargs):
-        return d[:k] + (fn(get(d, k), *args, **kwargs),) + d[k + 1:]
-
-    def last(d):
-        return d[-1]
-
-    def rest(d):
-        return d[1:]
-
-
-# noinspection PyMethodParameters
-class String(Protocol):
-    def last(d):
-        return d[-1]
-
-    def get(d, k, not_found=None):
-        return d[k]
-
-    def update(d, k, fn, *args, **kwargs):
-        return d[:k] + fn(get(d, k), *args, **kwargs) + d[k + 1]
-
-    def rest(d):
-        return d[1:]
-
-    def dissoc(d, *ks):
-        return ''.join(filter(lambda x: x not in ks, d))
-
-
-# noinspection PyMethodParameters
-class Set(Protocol):
-    def get(d, k, not_found=None):
-        if k in d:
-            return k
-        return not_found
-
-    def update(d, k, fn, *args, **kwargs):
-        if k in d:
-            return (d - {k}) | {fn(k, *args, **kwargs)}
-
-    def dissoc(d, *ks):
-        return d - {k for k in ks}
-
-    def rest(d):
-        res = iter(d)
-        try:
-            next(res)
-            return set(res)
-        except StopIteration:
-            return set()
-
-
-# noinspection PyMethodParameters
-class Iterable(Protocol):
-    def last(d):
-        try:
-            for x in d:
-                pass
-            return x
-        except NameError:
-            return None
-
-    def first(d):
-        return next(iter(d))
-
-    def rest(d):
-        try:
-            next(d)
-            return d
-        except StopIteration:
-            return None
 
 
 def update_in(d, key_list, fn, *args, **kwargs):
@@ -687,3 +529,171 @@ Result = collections.namedtuple('Result', field_names=['args', 'kwargs'])
 
 def ffirst(x):
     return first(first(x))
+
+
+#############
+# Protocols #
+#############
+
+# noinspection PyMethodParameters
+class Protocol(Namespaced):
+    def update(d, k, fn, *args, **kwargs):
+        raise NotImplementedError
+
+    def get(d, k, not_found=None):
+        raise NotImplementedError
+
+    def first(d):
+        return next(iter(d))
+
+    def rest(d):
+        raise NotImplementedError
+
+    def last(d):
+        raise NotImplementedError
+
+    def dissoc(d, *ks):
+        raise NotImplementedError
+
+
+# noinspection PyMethodParameters
+class Dict(Protocol):
+    def rest(d):
+        res = iter(d)
+        try:
+            next(res)
+            return res
+        except StopIteration:
+            return {}
+
+    def first(d):
+        return next(iter(k for k in d))
+
+    def update(d, k, fn, *args, **kwargs):
+        return {a: b for a, b in itertools.chain(d.items(), [(k, fn(get(d, k), *args, **kwargs))])}
+
+    def get(d, k, not_found=None):
+        return d.get(k, not_found)
+
+    def last(d):
+        return Dict.first(d)
+
+    def dissoc(d, *ks):
+        ks = set(ks)
+        return keyfilter(lambda x: x not in ks, d)
+
+
+# noinspection PyMethodParameters
+class List(Protocol):
+    def get(d, k, not_found=None):
+        return d[k]
+
+    def update(d, k, fn, *args, **kwargs):
+        return d[:k] + [fn(get(d, k), *args, **kwargs)] + d[k + 1:]
+
+    def last(d):
+        return d[-1]
+
+    def rest(d):
+        return d[1:]
+
+    def dissoc(d, *ks):
+        ks = set(ks)
+        return filterv(lambda x: x not in ks, d)
+
+
+# noinspection PyMethodParameters
+class Tuple(Protocol):
+    def dissoc(d, *ks):
+        ks = set(ks)
+        return tuple(filter(lambda x: x not in ks, d))
+
+    def get(d, k, not_found=None):
+        return d[k]
+
+    def update(d, k, fn, *args, **kwargs):
+        return d[:k] + (fn(get(d, k), *args, **kwargs),) + d[k + 1:]
+
+    def last(d):
+        return d[-1]
+
+    def rest(d):
+        return d[1:]
+
+
+# noinspection PyMethodParameters
+class String(Protocol):
+    def last(d):
+        return d[-1]
+
+    def get(d, k, not_found=None):
+        return d[k]
+
+    def update(d, k, fn, *args, **kwargs):
+        return d[:k] + fn(get(d, k), *args, **kwargs) + d[k + 1]
+
+    def rest(d):
+        return d[1:]
+
+    def dissoc(d, *ks):
+        return ''.join(filter(lambda x: x not in ks, d))
+
+
+# noinspection PyMethodParameters
+class Set(Protocol):
+    def get(d, k, not_found=None):
+        if k in d:
+            return k
+        return not_found
+
+    def update(d, k, fn, *args, **kwargs):
+        if k in d:
+            return (d - {k}) | {fn(k, *args, **kwargs)}
+
+    def dissoc(d, *ks):
+        return d - {k for k in ks}
+
+    def rest(d):
+        res = iter(d)
+        try:
+            next(res)
+            return set(res)
+        except StopIteration:
+            return set()
+
+
+# noinspection PyMethodParameters
+class Iterable(Protocol):
+    def last(d):
+        try:
+            for x in d:
+                pass
+            return x
+        except NameError:
+            return None
+
+    def first(d):
+        return next(iter(d))
+
+    def rest(d):
+        try:
+            next(d)
+            return d
+        except StopIteration:
+            return None
+
+
+###################################################
+# Deprecated but kept for backwards compatability #
+###################################################
+
+def rreduce(fn, seq, default=None):
+    """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
+    to functools.reduce"""
+
+    # if two arguments
+    if default is None:
+        return reduce(fn, seq)
+
+    # if three arguments
+    return reduce(fn, seq, default)
