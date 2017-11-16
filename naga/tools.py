@@ -13,6 +13,18 @@ class nil:
         return False
 
 
+def rreduce(fn, seq, default=None):
+    """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
+    to functools.reduce"""
+
+    # if two arguments
+    if default is None:
+        return reduce(fn, seq)
+
+    # if three arguments
+    return reduce(fn, seq, default)
+
+
 def reductions(fn, seq, default=nil):
     """generator version of reduce that returns 1 item at a time"""
 
@@ -89,14 +101,14 @@ f should accept number-of-colls arguments."""
 
 def stab(x, *forms):
     """Equivalent to Clojure's -> macro, requires special syntax (see example)
-    
+
 Threads the expr through the forms. Inserts x as the
 second item in the first form, making a list of it if it is not a
 list already. If there are more forms, inserts the first form as the
 second item in second form, etc.
 
 Example:
-    
+
 >>> stab({}, (assoc, 1, 2), (assoc, 'cat', 'dog'))
 {1: 2, 'cat': 'dog'}
 """
@@ -118,7 +130,7 @@ threadfirst = threadf = stab
 
 def stabb(x, *forms):
     """Equivalent to Clojure's ->> macro, requires special syntax (see example)
-    
+
 Threads the expr through the forms. Inserts x as the
 last item in the first form, making a list of it if it is not a
 list already. If there are more forms, inserts the first form as the
@@ -156,7 +168,7 @@ def inc(n):
 
 def first(iterable):
     """Returns the first item in the collection. If iterable evaluates to None, returns None."""
-    return _reflect(iterable).first(iterable)
+    return dispatch(iterable).first(iterable)
 
 
 def nth(seq, idx):
@@ -238,13 +250,13 @@ stateful transducer"""
 
 def last(iterable):
     """Return the last item in an iterable, in linear time"""
-    return _reflect(iterable).last(iterable)
+    return dispatch(iterable).last(iterable)
 
 
 def rest(iterable):
     """Returns a generator of the items after the first. Will be an empty list if iterable is empty generator
     or initial item type if empty iterable"""
-    return _reflect(iterable).rest(iterable)
+    return dispatch(iterable).rest(iterable)
 
 
 def iterate(fn, x):
@@ -317,7 +329,7 @@ def dissoc(d, *ks):
     """dissoc[iate]. If d is a dict, returns a new map of the same (hashed/sorted) type,
 that does not contain a mapping for key(s).  If d is a str, returns a string without the letters listed as keys.
 For any other sequence type, returns a generator with the listed keys filtered."""
-    return _reflect(d).dissoc(d, *ks)
+    return dispatch(d).dissoc(d, *ks)
 
 
 def merge_with(fn, *ds):
@@ -366,17 +378,139 @@ def terminal_dicts(*ds):
 
 
 def get(d, k, not_found=None):
-    return _reflect(d).get(d, k, not_found)
+    return dispatch(d).get(d, k, not_found)
 
 
 def update(d, k, fn, *args, **kwargs):
-    return _reflect(d).update(d, k, fn, *args, **kwargs)
+    return dispatch(d).update(d, k, fn, *args, **kwargs)
 
 
 def fpartial(f, *args, **kwargs):
     return lambda x: f(*((x,) + args), **kwargs)
 
 
+class Protocol(Namespaced):
+    def update(d, k, fn, *args, **kwargs):
+        raise NotImplementedError
+
+    def get(d, k, not_found=None):
+        raise NotImplementedError
+
+    def first(d):
+        return next(iter(d))
+
+    def rest(d):
+        raise NotImplementedError
+
+    def last(d):
+        raise NotImplementedError
+
+    def dissoc(d, *ks):
+        raise NotImplementedError
+
+
+class Dict(Protocol):
+    def rest(d):
+        res = iter(d)
+        next(res)
+        return res
+
+    def first(d):
+        return next(iter(k for k in d))
+
+    def update(d, k, fn, *args, **kwargs):
+        return {a: b for a, b in itertools.chain(d.items(), [(k, fn(get(d, k), *args, **kwargs))])}
+
+    def get(d, k, not_found=None):
+        return d.get(k, not_found)
+
+    def last(d):
+        return Dict.first(d)
+
+    def rest(d):
+        return list(d)[1:] or {}
+
+    def dissoc(d, *ks):
+        ks = set(ks)
+        return keyfilter(lambda x: x not in ks, d)
+
+
+class List(Protocol):
+    def get(d, k, not_found=None):
+        return d[k]
+
+    def update(d, k, fn, *args, **kwargs):
+        return d[:k] + [fn(get(d, k), *args, **kwargs)] + d[k + 1:]
+
+    def last(d):
+        return d[-1]
+
+    def rest(d):
+        return d[1:]
+
+    def dissoc(d, *ks):
+        ks = set(ks)
+        return filterv(lambda x: x not in ks, d)
+
+
+class Tuple(Protocol):
+    def dissoc(d, *ks):
+        ks = set(ks)
+        return tuple(filter(lambda x: x not in ks, d))
+
+    def get(d, k, not_found=None):
+        return d[k]
+
+    def update(d, k, fn, *args, **kwargs):
+        return d[:k] + (fn(get(d, k), *args, **kwargs),) + d[k + 1:]
+
+    def last(d):
+        return d[-1]
+
+    def rest(d):
+        return d[1:]
+
+
+class String(Protocol):
+    def last(d):
+        return d[-1]
+
+    def get(d, k, not_found=None):
+        return d[k]
+
+    def update(d, k, fn, *args, **kwargs):
+        return d[:k] + fn(get(d, k), *args, **kwargs) + d[k + 1]
+
+    def rest(d):
+        return d[1:]
+
+    def dissoc(d, *ks):
+        return ''.join(filter(lambda x: x not in ks, d))
+
+
+class Iterable(Protocol):
+    def last(d):
+        try:
+            for x in d:
+                pass
+            return x
+        except NameError:
+            return None
+
+    def first(d):
+        return next(iter(d))
+
+    def rest(d):
+        try:
+            next(d)
+            return d
+        except StopIteration:
+            return None
+
+
+class Cons(Protocol):
+    def first(d):
+        return d(0)
 
 
 def update_in(d, key_list, fn, *args, **kwargs):
@@ -391,15 +525,19 @@ created."""
     return update(d, first(key_list), update_in, rest(key_list), fn, *args, **kwargs)
 
 
-def _reflect(x):
-    """Returns associated protocol for builtin data-structures, otherwise returns provided class"""
+def dispatch(x, dispatch_table=None):
     Table = {dict: lambda: Dict,
              list: lambda: List,
              str: lambda: String,
-             tuple: lambda: Tuple,
-             set: lambda: Set}
+             tuple: lambda: Tuple}
 
-    return Table.get(type(x), x)()
+    Lookup = dispatch_table or (fpartial(isinstance, collections.MutableMapping), Dict,
+                                fpartial(isinstance, str), String,
+                                fpartial(isinstance, list), List,
+                                fpartial(isinstance, tuple), Tuple,
+                                lambda _: True, type(x))
+
+    return Table.get(type(x), lambda: cond(x, *Lookup))()
 
 
 def recursive_dict_merge(*ds):
@@ -506,12 +644,10 @@ def conj(seq, *items):
 
 
 def nonep(x):
-    """Predicate: x is None"""
     return x is None
 
 
 def complement(x):
-    """Not x"""
     return not x
 
 
@@ -529,171 +665,3 @@ Result = collections.namedtuple('Result', field_names=['args', 'kwargs'])
 
 def ffirst(x):
     return first(first(x))
-
-
-#############
-# Protocols #
-#############
-
-# noinspection PyMethodParameters
-class Protocol(Namespaced):
-    def update(d, k, fn, *args, **kwargs):
-        raise NotImplementedError
-
-    def get(d, k, not_found=None):
-        raise NotImplementedError
-
-    def first(d):
-        return next(iter(d))
-
-    def rest(d):
-        raise NotImplementedError
-
-    def last(d):
-        raise NotImplementedError
-
-    def dissoc(d, *ks):
-        raise NotImplementedError
-
-
-# noinspection PyMethodParameters
-class Dict(Protocol):
-    def rest(d):
-        res = iter(d)
-        try:
-            next(res)
-            return res
-        except StopIteration:
-            return {}
-
-    def first(d):
-        return next(iter(k for k in d))
-
-    def update(d, k, fn, *args, **kwargs):
-        return {a: b for a, b in itertools.chain(d.items(), [(k, fn(get(d, k), *args, **kwargs))])}
-
-    def get(d, k, not_found=None):
-        return d.get(k, not_found)
-
-    def last(d):
-        return Dict.first(d)
-
-    def dissoc(d, *ks):
-        ks = set(ks)
-        return keyfilter(lambda x: x not in ks, d)
-
-
-# noinspection PyMethodParameters
-class List(Protocol):
-    def get(d, k, not_found=None):
-        return d[k]
-
-    def update(d, k, fn, *args, **kwargs):
-        return d[:k] + [fn(get(d, k), *args, **kwargs)] + d[k + 1:]
-
-    def last(d):
-        return d[-1]
-
-    def rest(d):
-        return d[1:]
-
-    def dissoc(d, *ks):
-        ks = set(ks)
-        return filterv(lambda x: x not in ks, d)
-
-
-# noinspection PyMethodParameters
-class Tuple(Protocol):
-    def dissoc(d, *ks):
-        ks = set(ks)
-        return tuple(filter(lambda x: x not in ks, d))
-
-    def get(d, k, not_found=None):
-        return d[k]
-
-    def update(d, k, fn, *args, **kwargs):
-        return d[:k] + (fn(get(d, k), *args, **kwargs),) + d[k + 1:]
-
-    def last(d):
-        return d[-1]
-
-    def rest(d):
-        return d[1:]
-
-
-# noinspection PyMethodParameters
-class String(Protocol):
-    def last(d):
-        return d[-1]
-
-    def get(d, k, not_found=None):
-        return d[k]
-
-    def update(d, k, fn, *args, **kwargs):
-        return d[:k] + fn(get(d, k), *args, **kwargs) + d[k + 1]
-
-    def rest(d):
-        return d[1:]
-
-    def dissoc(d, *ks):
-        return ''.join(filter(lambda x: x not in ks, d))
-
-
-# noinspection PyMethodParameters
-class Set(Protocol):
-    def get(d, k, not_found=None):
-        if k in d:
-            return k
-        return not_found
-
-    def update(d, k, fn, *args, **kwargs):
-        if k in d:
-            return (d - {k}) | {fn(k, *args, **kwargs)}
-
-    def dissoc(d, *ks):
-        return d - {k for k in ks}
-
-    def rest(d):
-        res = iter(d)
-        try:
-            next(res)
-            return set(res)
-        except StopIteration:
-            return set()
-
-
-# noinspection PyMethodParameters
-class Iterable(Protocol):
-    def last(d):
-        try:
-            for x in d:
-                pass
-            return x
-        except NameError:
-            return None
-
-    def first(d):
-        return next(iter(d))
-
-    def rest(d):
-        try:
-            next(d)
-            return d
-        except StopIteration:
-            return None
-
-
-###################################################
-# Deprecated but kept for backwards compatability #
-###################################################
-
-def rreduce(fn, seq, default=None):
-    """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
-    to functools.reduce"""
-
-    # if two arguments
-    if default is None:
-        return reduce(fn, seq)
-
-    # if three arguments
-    return reduce(fn, seq, default)

@@ -1,6 +1,7 @@
 import copy
 import functools
 import types
+from six import with_metaclass
 
 
 def decorator(d):
@@ -70,15 +71,15 @@ def sffncall(fn, args, kwargs):
 class NamespacedMeta(type):
     """Metaclass to convert all methods to static methods"""
 
-    def __init__(cls, o: object, bases, ns):
-        super().__init__(o)
+    def __init__(cls, o, bases, ns):
+        super(type, NamespacedMeta).__init__(o)
 
-        for f, n in cls.__dict__.items():
-            if isinstance(f, types.MethodType):
-                setattr(cls, n, decorator(staticmethod)(f))
+        for n, f in cls.__dict__.items():
+            if isinstance(f, (types.MethodType, types.FunctionType)):
+                setattr(cls, n, staticmethod(f))
 
 
-class Namespaced(metaclass=NamespacedMeta):
+class Namespaced(with_metaclass(NamespacedMeta)):
     """Inheriting from this will make all methods of the class static methods."""
     pass
 
