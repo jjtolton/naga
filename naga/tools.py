@@ -591,7 +591,6 @@ def _reflect(x):
              conj: Iterable}
             .get(type(x), cond(x,
                                fpartial(isinstance, collections.MutableMapping), dict,
-                               fpartial(isinstance, collections.Generator), Iterable,
                                fpartial(isinstance, types.GeneratorType), Iterable,
                                constantly(True), x)))
 
