@@ -3,6 +3,8 @@ from functools import reduce
 
 
 class LazySeq(object):
+    __slots__ = ['seq', 'cache', 'idx']
+
     def __init__(self, seq):
         self.seq = iter(seq)
         self.cache = {}
@@ -102,65 +104,3 @@ class LazySeq(object):
             return bool(self[0])
         except IndexError:
             return False
-
-
-def memo(fn):
-    cache = {}
-
-    def _memo(*args):
-        if args in cache:
-            return cache[args]
-        res = cache[args] = fn(*args)
-        return res
-
-    _memo.cache = cache
-    return _memo
-
-
-# @memo
-def simplefib(n):
-    return n if n < 2 else simplefib(n - 1) + simplefib(n - 2)
-
-
-def main():
-    fiblist = LazySeq((simplefib(i) for i in itertools.count()))
-
-    even_nums = LazySeq(x for x in itertools.count() if x % 2 == 0)
-
-    lazy_seq = LazySeq(itertools.takewhile(lambda x: x < 10, even_nums))
-    print(list(lazy_seq))
-    print(len(lazy_seq))
-
-    print(even_nums[3:10])
-
-    seq = LazySeq(iter(range(10)))
-
-    print(list(seq))
-    print(list(seq))
-    print(sorted(seq))
-
-    print(list(seq + seq))
-    print(zip(seq, seq))
-    iterseq = LazySeq(iter(seq))
-
-
-    print(next(iterseq))
-    print(next(iterseq))
-
-
-    # items = reduce(lambda x, y: x + range(100), range(50), LazySeq([2]))
-    # print(len(items))
-    # print(len(items))
-    # print([items[i] for i in range(1000)])
-    # print(len(list(items)))
-    # for item in items:
-    #     print(item)
-
-    items2 = []
-
-    # next(items2)
-    # print(LazySeq(items2)[0])
-
-
-if __name__ == '__main__':
-    main()

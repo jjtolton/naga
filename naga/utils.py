@@ -1,3 +1,4 @@
+import collections
 import copy
 import functools
 import types
@@ -83,6 +84,8 @@ class Namespaced(with_metaclass(NamespacedMeta)):
     """Inheriting from this will make all methods of the class static methods."""
     pass
 
+
+Result = collections.namedtuple('Result', field_names=['args', 'kwargs'])
 
 if __name__ == '__main__':
     @trace

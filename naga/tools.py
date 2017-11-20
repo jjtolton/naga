@@ -1,4 +1,5 @@
 import collections
+import inspect
 import itertools
 import types
 from functools import reduce, partial
@@ -11,18 +12,6 @@ seq_types = list, tuple, str
 class nil:
     def __bool__(self):
         return False
-
-
-def rreduce(fn, seq, default=None):
-    """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
-    to functools.reduce"""
-
-    # if two arguments
-    if default is None:
-        return reduce(fn, seq)
-
-    # if three arguments
-    return reduce(fn, seq, default)
 
 
 def reductions(fn, seq, default=nil):
@@ -168,7 +157,7 @@ def inc(n):
 
 def first(iterable):
     """Returns the first item in the collection. If iterable evaluates to None, returns None."""
-    return dispatch(iterable).first(iterable)
+    return _reflect(iterable).first(iterable)
 
 
 def nth(seq, idx):
@@ -243,20 +232,36 @@ def comp(*fns):
 of those fns.  The returned fn takes a variable number of args,
 applies the rightmost of fns to the args, the next
 fn (left-to-right) to the result, etc.  Returns a
-stateful transducer"""
+stateful transducer
 
-    return partial(reduce, lambda a, b: b(a), reversed(fns))
+>>> comp(list, partial(map, inc), partial(map, lambda x: x * 2))([0, 1, 2])
+[1, 3, 5]
+"""
+
+    return compose(reversed(fns))
+
+
+def juxt(*fns):
+    """ Takes a set of functions and returns a fn that is the juxtaposition
+  of those fns.  The returned fn takes a variable number of args, and
+  returns a vector containing the result of applying each fn to the
+  args (left-to-right)
+
+  >>> juxt(first, second, last)(list(range(10)))
+  [0, 1, 9]"""
+
+    return lambda x: [f(x) for f in fns]
 
 
 def last(iterable):
     """Return the last item in an iterable, in linear time"""
-    return dispatch(iterable).last(iterable)
+    return _reflect(iterable).last(iterable)
 
 
 def rest(iterable):
     """Returns a generator of the items after the first. Will be an empty list if iterable is empty generator
     or initial item type if empty iterable"""
-    return dispatch(iterable).rest(iterable)
+    return _reflect(iterable).rest(iterable)
 
 
 def iterate(fn, x):
@@ -286,7 +291,7 @@ def drop(n, seq=None):
     """Returns a lazy sequence of all but the first n items in coll.
 Returns a stateful transducer when no collection is provided."""
     if seq is None:
-        return partial(n, seq)
+        return partial(drop, n)
 
     return itertools.islice(seq, n, None)
 
@@ -322,14 +327,14 @@ def assoc(m, k, v):
   same (hashed/sorted) type, that contains the mapping of key(s) to
   val(s). When applied to a sequence, returns a new sequence of that
   type that contains val v at index k."""
-    return update(m, k, lambda *_, **__: v)
+    return update(m, k, constantly(v))
 
 
 def dissoc(d, *ks):
     """dissoc[iate]. If d is a dict, returns a new map of the same (hashed/sorted) type,
 that does not contain a mapping for key(s).  If d is a str, returns a string without the letters listed as keys.
 For any other sequence type, returns a generator with the listed keys filtered."""
-    return dispatch(d).dissoc(d, *ks)
+    return _reflect(d).dissoc(d, *ks)
 
 
 def merge_with(fn, *ds):
@@ -358,13 +363,12 @@ keys into dictionaries.  I.e.:
 
 >>> d = {1: {2: {3: 4}}}
 >>> assoc_in(d, [1, 2, 'A'], 'X')
-{1: {2: {3: 4,
-        'A': 'X'}}"""
+{1: {2: {3: 4, 'A': 'X'}}}"""
     if len(key_list) == 1:
         return assoc(d, first(key_list), val)
 
     if first(key_list) not in d:
-        return update(d, first(key_list), lambda *_, **__: assoc_in({}, rest(key_list), val))
+        return assoc(d, first(key_list), assoc_in({}, rest(key_list), val))
 
     return update(d, first(key_list), assoc_in, rest(key_list), val)
 
@@ -377,18 +381,37 @@ def terminal_dicts(*ds):
     return all(map(terminal_dict, ds))
 
 
-def get(d, k, not_found=None):
-    return dispatch(d).get(d, k, not_found)
+def get(x, k, not_found=None):
+    """Get key "k" from collection "x".
+
+    >>> get({1: 2}, 1)
+    2
+    >>> get([1, 2], 0)
+    1
+    >>> get((x for x in range(10)), 2)
+    2
+    >>> get((1, 2), 0)
+    1
+    >>> get('abc', 2)
+    'c'
+
+    :param x:
+    :param k:
+    :param not_found:
+    :return:
+    """
+    return _reflect(x).get(x, k, not_found)
 
 
 def update(d, k, fn, *args, **kwargs):
-    return dispatch(d).update(d, k, fn, *args, **kwargs)
+    return _reflect(d).update(d, k, fn, *args, **kwargs)
 
 
 def fpartial(f, *args, **kwargs):
     return lambda x: f(*((x,) + args), **kwargs)
 
 
+# noinspection PyMethodParameters
 class Protocol(Namespaced):
     def update(d, k, fn, *args, **kwargs):
         raise NotImplementedError
@@ -409,6 +432,7 @@ class Protocol(Namespaced):
         raise NotImplementedError
 
 
+# noinspection PyMethodParameters
 class Dict(Protocol):
     def rest(d):
         res = iter(d)
@@ -435,6 +459,7 @@ class Dict(Protocol):
         return keyfilter(lambda x: x not in ks, d)
 
 
+# noinspection PyMethodParameters
 class List(Protocol):
     def get(d, k, not_found=None):
         return d[k]
@@ -453,6 +478,7 @@ class List(Protocol):
         return filterv(lambda x: x not in ks, d)
 
 
+# noinspection PyMethodParameters
 class Tuple(Protocol):
     def dissoc(d, *ks):
         ks = set(ks)
@@ -488,6 +514,7 @@ class String(Protocol):
         return ''.join(filter(lambda x: x not in ks, d))
 
 
+# noinspection PyMethodParameters
 class Iterable(Protocol):
     def last(d):
         try:
@@ -507,10 +534,44 @@ class Iterable(Protocol):
         except StopIteration:
             return None
 
+    def get(x, k, not_found=None):
+        if k < 0 or not isinstance(k, int):
+            raise Exception("\"k\" must be an index value greater than one, not {k}(type(k))")
+        x = iter(x)
+        while True:
+            if k == 0:
+                return next(x)
+            k -= 1
+            next(x)
 
-class Cons(Protocol):
-    def first(d):
-        return d(0)
+
+def constantly(x):
+    return lambda *args, **kwargs: x
+
+
+# noinspection PyMethodParameters
+class Set(Protocol):
+    def assoc(s, x):
+        return s | {x}
+
+    def dissoc(s, x):
+        return s - {x}
+
+    def last(s):
+        if len(s) > 0:
+            for x in s:
+                pass
+            return x
+        return None
+
+    def first(s):
+        if len(s) > 0:
+            for x in s:
+                return x
+        return None
+
+    def update(s, k, fn, *args, **kwargs):
+        return (s - {k}) | {fn(k, *args, **kwargs)}
 
 
 def update_in(d, key_list, fn, *args, **kwargs):
@@ -525,19 +586,14 @@ created."""
     return update(d, first(key_list), update_in, rest(key_list), fn, *args, **kwargs)
 
 
-def dispatch(x, dispatch_table=None):
-    Table = {dict: lambda: Dict,
-             list: lambda: List,
-             str: lambda: String,
-             tuple: lambda: Tuple}
-
-    Lookup = dispatch_table or (fpartial(isinstance, collections.MutableMapping), Dict,
-                                fpartial(isinstance, str), String,
-                                fpartial(isinstance, list), List,
-                                fpartial(isinstance, tuple), Tuple,
-                                lambda _: True, type(x))
-
-    return Table.get(type(x), lambda: cond(x, *Lookup))()
+def _reflect(x):
+    return ({dict: Dict, list: List, str: String, tuple: Tuple, set: Set, types.GeneratorType: Iterable,
+             conj: Iterable}
+            .get(type(x), cond(x,
+                               fpartial(isinstance, collections.MutableMapping), dict,
+                               fpartial(isinstance, collections.Generator), Iterable,
+                               fpartial(isinstance, types.GeneratorType), Iterable,
+                               constantly(True), x)))
 
 
 def recursive_dict_merge(*ds):
@@ -639,8 +695,20 @@ def partition(n, seq):
     return windows(n, seq)
 
 
-def conj(seq, *items):
-    return list(itertools.chain(seq, items))
+def conj(x, *args):
+    return append(x, args)
+
+
+class fconj:
+    """Fast conj.  Only realizes to list when explicitly iterated over.  """
+    __slots__ = ['seq', 'items']
+
+    def __init__(self, seq, *items):
+        self.seq = seq
+        self.items = items
+
+    def __iter__(self):
+        return itertools.chain(self.seq, self.items)
 
 
 def nonep(x):
@@ -656,12 +724,37 @@ def somep(x):
 
 
 def filterv(fn, *colls):
-    "A greedy version of filter"
+    """A greedy version of filter."""
     return list(filter(fn, *colls))
-
-
-Result = collections.namedtuple('Result', field_names=['args', 'kwargs'])
 
 
 def ffirst(x):
     return first(first(x))
+
+
+def case(x, *forms):
+    for a, b in partition(2, forms):
+        if a == x:
+            return b
+
+
+def remove(f, x):
+    """>>> list(remove(lambda x: x > 2, range(10)))
+    [0, 1]"""
+    return filter(comp(), x)
+
+
+##############
+# deprecated #
+##############
+
+def rreduce(fn, seq, default=None):
+    """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
+    to functools.reduce"""
+
+    # if two arguments
+    if default is None:
+        return reduce(fn, seq)
+
+    # if three arguments
+    return reduce(fn, seq, default)
