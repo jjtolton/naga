@@ -1,5 +1,7 @@
 import itertools
-from functools import reduce
+import sys
+
+from naga.utils import nil
 
 
 class LazySeq(object):
@@ -40,12 +42,37 @@ class LazySeq(object):
     def __eq__(self, other):
         return id(self) == id(other)
 
-    def __getslice__(self, start, stop=None, step=None):
-        if not stop:
-            stop = start
-            return list(itertools.islice(self, stop))
-        else:
-            return list(itertools.islice(self, start, stop, step))
+    @staticmethod
+    def first(x):
+        return next(x)
+
+    @staticmethod
+    def last(x):
+        res = None
+        for xi in x:
+            res = xi
+        return res
+
+    @staticmethod
+    def get(x, k, not_found=nil):
+        return x[k]
+
+    @staticmethod
+    def rest(x):
+        return LazySeq(itertools.islice(x, 1, sys.maxsize))
+
+    def __getslice__(self, *args):
+        base = list(self)
+
+        if len(args) == 1:
+            stop = args[0]
+            return LazySeq(base[:stop])
+        elif len(args) == 2:
+            start, stop = base
+            return LazySeq(base[start:stop])
+        elif len(args) == 3:
+            start, stop, step = base
+            return LazySeq(base[start:stop:step])
 
     def append(self, item):
         return self + [item]
@@ -96,8 +123,8 @@ class LazySeq(object):
     def pop(self, idx=None):
         base_list = list(self)
         if idx is None:
-            return base_list[:-1]
-        return base_list[:idx] + base_list[idx + 1:]
+            return LazySeq(base_list[:-1])
+        return LazySeq(base_list[:idx] + base_list[idx + 1:])
 
     def __nonzero__(self):
         try:
