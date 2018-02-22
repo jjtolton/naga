@@ -1,8 +1,6 @@
 from collections import namedtuple
 from functools import wraps
 
-from naga.tools import apply
-
 FuncWrap = namedtuple('FuncWrap', field_names=['fn', 'args', 'kwargs'])
 
 
