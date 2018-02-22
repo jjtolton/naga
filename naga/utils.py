@@ -104,3 +104,11 @@ if __name__ == '__main__':
 
 
     print(oddrecurse(10))
+
+
+class nil:
+    def __bool__(self):
+        return False
+
+    def __repr__(self):
+        return 'nil'

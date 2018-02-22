@@ -3,15 +3,12 @@ import inspect
 import itertools
 import types
 from functools import reduce, partial
+from warnings import warn
 
-from naga.utils import Namespaced
+from naga import nil
+from naga.utils import Namespaced, decorator
 
 seq_types = list, tuple, str
-
-
-class nil:
-    def __bool__(self):
-        return False
 
 
 def reductions(fn, seq, default=nil):
@@ -57,21 +54,26 @@ is not present, or the not-found value if supplied.
     if len(ks) == 1:
         return get(d, first(ks), not_found)
     else:
-        return get(get(d, first(ks)), rest(ks), not_found)
+        return get_in(get(d, first(ks)), rest(ks), not_found)
 
 
-def apply(fn, x):
+def apply(fn, *x):
     """Applies fn to the argument list formed by prepending intervening arguments to args.
 
     apply(fn, x) --> fn(*x)"""
-    return fn(*x)
+    if len(x) > 0 and isinstance(x[-1], (tuple, list)):
+        return apply(fn, *(x[:-1] + tuple(x[-1])))
+    else:
+        return fn(*x)
 
 
-def some(fn, seq=None):
+def some(fn, seq=nil):
     """Returns first truthy value or False.  Can accept a predicate as first argument."""
 
-    if not isinstance(fn, (types.FunctionType, types.MethodType)):
-        return some(lambda x: x, seq=fn)
+    if seq is nil:
+        seq = fn
+        fn = identity
+        return some(fn, seq)
 
     for e in seq:
         if fn(e):
@@ -319,7 +321,7 @@ def merge(*ds):
     """Returns a dict that consists of the rest of the dicts merged onto
 the first.  If a key occurs in more than one dict, the mapping from
 the latter (left-to-right) will be the mapping in the result."""
-    return dict(itertools.chain(*map(lambda _d: _d.items(), ds)))
+    return dict(itertools.chain(*(d.items() for d in ds)))
 
 
 def assoc(m, k, v):
@@ -343,9 +345,7 @@ the first.  If a key occurs in more than one dict, the mapping(s)
 from the latter (left-to-right) will be combined with the mapping in
 the result by calling fn(val-in-result, val-in-latter)."""
     return reduce(
-        lambda d, x: dict(itertools.chain(
-            d.items(),
-            dict(((k, v) if k not in d else (k, fn(d[k], x[k])) for k, v in x.items())).items())),
+        lambda d, x: merge(d, dict(((k, v) if k not in d else (k, fn(d[k], x[k])) for k, v in x.items()))),
         ds)
 
 
@@ -381,7 +381,7 @@ def terminal_dicts(*ds):
     return all(map(terminal_dict, ds))
 
 
-def get(x, k, not_found=None):
+def get(x, k=nil, not_found=None):
     """Get key "k" from collection "x".
 
     >>> get({1: 2}, 1)
@@ -420,7 +420,10 @@ class Protocol(Namespaced):
         raise NotImplementedError
 
     def first(d):
-        return next(iter(d))
+        try:
+            return next(iter(d))
+        except StopIteration:
+            return []
 
     def rest(d):
         raise NotImplementedError
@@ -434,11 +437,6 @@ class Protocol(Namespaced):
 
 # noinspection PyMethodParameters
 class Dict(Protocol):
-    def rest(d):
-        res = iter(d)
-        next(res)
-        return res
-
     def first(d):
         return next(iter(k for k in d))
 
@@ -462,6 +460,11 @@ class Dict(Protocol):
 # noinspection PyMethodParameters
 class List(Protocol):
     def get(d, k, not_found=None):
+        if not 0 <= k <= len(d):
+            if not_found is nil:
+                return None
+            return not_found
+
         return d[k]
 
     def update(d, k, fn, *args, **kwargs):
@@ -525,16 +528,19 @@ class Iterable(Protocol):
             return None
 
     def first(d):
-        return next(iter(d))
+        try:
+            return next(iter(d))
+        except StopIteration:
+            return None
 
     def rest(d):
         try:
             next(d)
             return d
         except StopIteration:
-            return None
+            return []
 
-    def get(x, k, not_found=None):
+    def get(d, k, not_found=None):
         if k < 0 or not isinstance(k, int):
             raise Exception("\"k\" must be an index value greater than one, not {k}(type(k))")
         x = iter(x)
@@ -551,9 +557,6 @@ def constantly(x):
 
 # noinspection PyMethodParameters
 class Set(Protocol):
-    def assoc(s, x):
-        return s | {x}
-
     def dissoc(s, x):
         return s - {x}
 
@@ -586,19 +589,29 @@ created."""
     return update(d, first(key_list), update_in, rest(key_list), fn, *args, **kwargs)
 
 
-def _reflect(x):
-    return ({dict: Dict, list: List, str: String, tuple: Tuple, set: Set, types.GeneratorType: Iterable,
-             conj: Iterable}
-            .get(type(x), cond(x,
-                               fpartial(isinstance, collections.MutableMapping), dict,
-                               fpartial(isinstance, types.GeneratorType), Iterable,
-                               constantly(True), x)))
+class _Reflect:
+    vals = {dict: Dict, list: List, str: String, tuple: Tuple, set: Set, types.GeneratorType: Iterable}
+
+    @classmethod
+    def reflect(cls, x):
+        datatype = cls.vals.get(type(x))
+        if datatype is None:
+            datatype = cond(x,
+                            fpartial(isinstance, collections.MutableMapping), Dict,
+                            fpartial(isinstance, types.GeneratorType), Iterable,
+                            constantly(True), x)
+        return datatype
+
+
+_reflect = _Reflect.reflect
 
 
 def recursive_dict_merge(*ds):
     """Recursively merge dictionaries"""
     return merge_with(lambda a, b: recursive_dict_merge(a, b) if not terminal_dicts(a, b) else merge(a, b), *ds)
 
+
+deep_merge = recursive_dict_merge
 
 def keys2dict(val, *ks):
     """Convert a value and a list of keys to a nested dictionary with the value at the leaf"""
@@ -677,21 +690,26 @@ def append(*seqs):
 
 
 def pop(iterable):
-    _, seq = itertools.tee(iterable)
-    return itertools.islice(0, len(seq) - 1)
+    it = iter(iterable)
+    val = first(iterable)
+    while val:
+        try:
+            yield val
+            val = next(it)
+        except StopIteration:
+            pass
 
 
-def windows(n, seq):
+def popv(iterable):
+    return list(pop(iterable))
+
+
+def partition(n, seq):
     """Returns a lazy sequence of lists of n items each"""
     if 'zip_longest' in dir(itertools):
         return itertools.zip_longest(*(seq[i::n] for i in range(n)))
     else:
         return itertools.izip_longest(*(seq[i::n] for i in range(n)))
-
-
-def partition(n, seq):
-    """Returns a lazy sequence of lists of n items each"""
-    return windows(n, seq)
 
 
 def conj(x, *args):
@@ -714,8 +732,12 @@ def nonep(x):
     return x is None
 
 
-def complement(x):
-    return not x
+@decorator
+def complement(f):
+    def _complement(*args, **kwargs):
+        return not f(*args, **kwargs)
+
+    return _complement
 
 
 def somep(x):
@@ -740,7 +762,15 @@ def case(x, *forms):
 def remove(f, x):
     """>>> list(remove(lambda x: x > 2, range(10)))
     [0, 1]"""
-    return filter(comp(), x)
+    return filter(complement(f), x)
+
+
+def interleave(*xs):
+    return (a for b in zip(*xs) for a in b)
+
+
+def intereleavev(*xs):
+    return list(interleave(*xs))
 
 
 ##############
@@ -750,6 +780,8 @@ def remove(f, x):
 def rreduce(fn, seq, default=None):
     """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
     to functools.reduce"""
+    from warnings import warn
+    warn(DeprecationWarning("rreduce is deprecated and will be removed in future versions"))
 
     # if two arguments
     if default is None:
@@ -757,3 +789,12 @@ def rreduce(fn, seq, default=None):
 
     # if three arguments
     return reduce(fn, seq, default)
+
+
+def windows(n, seq):
+    """Returns a lazy sequence of lists of n items each"""
+    warn(DeprecationWarning("windows is deprecated and will be removed in future versions"))
+    if 'zip_longest' in dir(itertools):
+        return itertools.zip_longest(*(seq[i::n] for i in range(n)))
+    else:
+        return itertools.izip_longest(*(seq[i::n] for i in range(n)))
