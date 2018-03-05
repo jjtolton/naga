@@ -1,5 +1,4 @@
 import collections
-import inspect
 import itertools
 import types
 from functools import reduce, partial
@@ -329,7 +328,7 @@ def assoc(m, k, v):
   same (hashed/sorted) type, that contains the mapping of key(s) to
   val(s). When applied to a sequence, returns a new sequence of that
   type that contains val v at index k."""
-    return update(m, k, constantly(v))
+    return m.assoc(m, k, v)
 
 
 def dissoc(d, *ks):
@@ -345,14 +344,17 @@ the first.  If a key occurs in more than one dict, the mapping(s)
 from the latter (left-to-right) will be combined with the mapping in
 the result by calling fn(val-in-result, val-in-latter)."""
     return reduce(
-        lambda d, x: merge(d, dict(((k, v) if k not in d else (k, fn(d[k], x[k])) for k, v in x.items()))),
+        lambda d, x: merge(d, dict(
+            ((k, v) if k not in d else (k, fn(d[k], x[k])) for k, v in
+             x.items()))),
         ds)
 
 
 def merge_with_default(fn, default=nil, *dicts):
     """Like merge_with, except all keys are initialized to default value specified to simplify the collision-fn.
     If no default is specified, will use the initial values of the last dictionary merged."""
-    return merge_with(fn, valmap(lambda v: v if default is nil else default, merge(*dicts)), *dicts)
+    return merge_with(fn, valmap(lambda v: v if default is nil else default,
+                                 merge(*dicts)), *dicts)
 
 
 def assoc_in(d, key_list, val):
@@ -374,7 +376,8 @@ keys into dictionaries.  I.e.:
 
 
 def terminal_dict(*ds):
-    return not (are_dicts(*ds) and all(map(lambda x: are_dicts(*x.values()), ds)))
+    return not (
+    are_dicts(*ds) and all(map(lambda x: are_dicts(*x.values()), ds)))
 
 
 def terminal_dicts(*ds):
@@ -441,7 +444,8 @@ class Dict(Protocol):
         return next(iter(k for k in d))
 
     def update(d, k, fn, *args, **kwargs):
-        return {a: b for a, b in itertools.chain(d.items(), [(k, fn(get(d, k), *args, **kwargs))])}
+        return {a: b for a, b in itertools.chain(d.items(), [
+            (k, fn(get(d, k), *args, **kwargs))])}
 
     def get(d, k, not_found=None):
         return d.get(k, not_found)
@@ -542,7 +546,8 @@ class Iterable(Protocol):
 
     def get(d, k, not_found=None):
         if k < 0 or not isinstance(k, int):
-            raise Exception("\"k\" must be an index value greater than one, not {k}(type(k))")
+            raise Exception(
+                "\"k\" must be an index value greater than one, not {k}(type(k))")
         x = iter(x)
         while True:
             if k == 0:
@@ -586,19 +591,23 @@ created."""
     if len(key_list) == 1:
         return update(d, first(key_list), fn, *args, **kwargs)
 
-    return update(d, first(key_list), update_in, rest(key_list), fn, *args, **kwargs)
+    return update(d, first(key_list), update_in, rest(key_list), fn, *args,
+                  **kwargs)
 
 
 class _Reflect:
-    vals = {dict: Dict, list: List, str: String, tuple: Tuple, set: Set, types.GeneratorType: Iterable}
+    vals = {dict: Dict, list: List, str: String, tuple: Tuple, set: Set,
+            types.GeneratorType: Iterable}
 
     @classmethod
     def reflect(cls, x):
         datatype = cls.vals.get(type(x))
         if datatype is None:
             datatype = cond(x,
-                            fpartial(isinstance, collections.MutableMapping), Dict,
-                            fpartial(isinstance, types.GeneratorType), Iterable,
+                            fpartial(isinstance, collections.MutableMapping),
+                            Dict,
+                            fpartial(isinstance, types.GeneratorType),
+                            Iterable,
                             constantly(True), x)
         return datatype
 
@@ -608,10 +617,14 @@ _reflect = _Reflect.reflect
 
 def recursive_dict_merge(*ds):
     """Recursively merge dictionaries"""
-    return merge_with(lambda a, b: recursive_dict_merge(a, b) if not terminal_dicts(a, b) else merge(a, b), *ds)
+    return merge_with(
+        lambda a, b: recursive_dict_merge(a, b) if not terminal_dicts(a,
+                                                                      b) else merge(
+            a, b), *ds)
 
 
 deep_merge = recursive_dict_merge
+
 
 def keys2dict(val, *ks):
     """Convert a value and a list of keys to a nested dictionary with the value at the leaf"""
@@ -636,8 +649,10 @@ def supassoc_in(d, val, k, *ks):
 
 def recursive_group_dicts(*ds):
     """Like recursive_dict_merge, except handles recursive collisions by grouping into a list instead of merging"""
-    return merge_with(lambda x, y: recursive_group_dicts(x, y) if not terminal_dicts(x, y) else {
-        first(x.keys()): x.values() + y.values()}, *ds)
+    return merge_with(
+        lambda x, y: recursive_group_dicts(x, y) if not terminal_dicts(x,
+                                                                       y) else {
+            first(x.keys()): x.values() + y.values()}, *ds)
 
 
 def keyfilter(fn, d):
@@ -773,6 +788,10 @@ def intereleavev(*xs):
     return list(interleave(*xs))
 
 
+def repeatedly(x, times=None):
+    return itertools.repeat(x, times=times)
+
+
 ##############
 # deprecated #
 ##############
@@ -781,7 +800,8 @@ def rreduce(fn, seq, default=None):
     """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
     to functools.reduce"""
     from warnings import warn
-    warn(DeprecationWarning("rreduce is deprecated and will be removed in future versions"))
+    warn(DeprecationWarning(
+        "rreduce is deprecated and will be removed in future versions"))
 
     # if two arguments
     if default is None:
@@ -793,7 +813,8 @@ def rreduce(fn, seq, default=None):
 
 def windows(n, seq):
     """Returns a lazy sequence of lists of n items each"""
-    warn(DeprecationWarning("windows is deprecated and will be removed in future versions"))
+    warn(DeprecationWarning(
+        "windows is deprecated and will be removed in future versions"))
     if 'zip_longest' in dir(itertools):
         return itertools.zip_longest(*(seq[i::n] for i in range(n)))
     else:
