@@ -1,5 +1,6 @@
 import collections
 import doctest
+import heapq
 import inspect
 import itertools
 import re
@@ -23,6 +24,44 @@ def message(f):
         return getattr(x, f.__name__)(x, *args, **kwargs)
 
     return _
+
+
+class PatternMap(list):
+    counter = itertools.count()
+
+    def score(self, argtypes):
+
+        def _score(x):
+            if isinstance(x, set):
+                return 0
+
+            if isinstance(x, list):
+                return 1
+
+            if x == Dispatch._:
+                return 2
+
+            return 3
+        return tuple([_score(argtype) for argtype in argtypes])
+
+
+
+    def push(self, item):
+        argtypes, fn = item
+
+        # most specific to least specific
+        # 0. concrete types -> set
+        # 1. types -> type
+        # 2. predicates -> list
+        # 3. fall through
+
+        score = self.score(argtypes)
+        scores = tuple(sc)
+
+        heapq.heappush(self, (scores, next(PatternMap.counter), item))
+
+    def pop(self):
+        return heapq.heappop(self)
 
 
 @decorator
@@ -90,7 +129,7 @@ class Dispatch:
 
     def __init__(self, f=identity):
         self.f = f
-        self.pattern_map = []
+        self.pattern_map = PatternMap()
         self.maxlen = 0
         self.default = f
         self.arrities = {}
@@ -105,7 +144,8 @@ class Dispatch:
                                  0 if not isinstance(x[0][0], set)
                                  else -1)
 
-            self.pattern_map = sorted([(argtypes, f), *self.pattern_map], key=sortkey)
+            # self.pattern_map = sorted([(argtypes, f), *self.pattern_map], key=sortkey)
+            self.pattern_map.push((argtypes, f))
             self.maxlen = argmax(self.pattern_map, key=lambda x: len(x[0]))
             return self
 
@@ -133,7 +173,8 @@ class Dispatch:
             if n == 0:
                 return self.default
 
-            for argtypes, fn in self.pattern_map:
+            for argtypes, fn in (self.pattern_map.pop() for _ in
+                                 range(len(self.pattern_map))):
                 for argtype, arg in itertools.zip_longest(argtypes, args[:n]):
                     if argtype is None or arg is None:
                         break
@@ -1061,4 +1102,16 @@ def windows(n, seq):
 
 
 if __name__ == '__main__':
-    doctest.testmod()
+
+    @Dispatch
+    def foo():
+        'foo'
+
+    @foo.declare
+    def foo(x, y):
+        return x, y
+
+
+
+
+    # doctest.testmod()
