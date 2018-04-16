@@ -110,9 +110,11 @@ class Dispatch:
                 argspec.args)
         anns = argspec.annotations
         varargs = [Dispatch.star] if argspec.varargs else []
+        return_fn = argspec.annotations.get('return', identity)
+        fn = compose([f, return_fn])
 
         f = self.pattern(*[*[anns.get(arg, Dispatch._) for arg in args],
-                           *varargs])(f)
+                           *varargs])(fn)
         return f
 
     def __call__(self, *args, **kwargs):
