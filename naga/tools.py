@@ -1,13 +1,161 @@
 import collections
+import doctest
+import inspect
 import itertools
+import re
 import types
-from functools import reduce, partial
-from warnings import warn
+from _operator import or_
+from functools import partial, reduce
 
 from naga import nil
 from naga.utils import Namespaced, decorator
 
 seq_types = list, tuple, str
+
+
+def identity(x):
+    return x
+
+
+@decorator
+def message(f):
+    def _(x, *args, **kwargs):
+        return getattr(x, f.__name__)(x, *args, **kwargs)
+
+    return _
+
+
+@decorator
+class Dispatch:
+    class _:
+        pass
+
+    class Just:
+        def __init__(self, x):
+            self.x = x
+
+        def __eq__(self, other):
+            return self.x == other
+
+        def __call__(self, x):
+            return self == x
+
+    class star:
+        pass
+
+    class pred:
+        def __init__(self, f, type=nil):
+            self.f = f
+            self.t = type
+
+        def __call__(self, arg):
+            if self.t is not nil:
+                if isinstance(arg, self.t):
+                    return self.f(arg)
+                else:
+                    return False
+            else:
+                return self.f(arg)
+
+    class Or(pred):
+        def __init__(self, *types):
+            self.args = types
+            super().__init__(self.__call__)
+
+        def __call__(self, x):
+            return reduce(or_, [
+                (isinstance(a, Dispatch.Just) and a(x) or
+                 isinstance(a, Dispatch.pred) and a(x) or
+                 not isinstance(a, Dispatch.Just) and isinstance(x, a))
+                for a in self.args])
+
+    class iterator(pred):
+
+        def __init__(self):
+            super().__init__(
+                lambda x: hasattr(x, '__iter__') and hasattr(x, '__next__'))
+
+    GeneratorType = iterator()
+
+    class regex(pred):
+
+        def __init__(self, s, flags=0, type=str):
+            super().__init__(lambda x: re.match(s, x, flags=flags),
+                             type=type)
+
+    class Type(pred):
+
+        def __init__(self, x):
+            super().__init__(identity, type(x))
+
+    def __init__(self, f=identity):
+        self.f = f
+        self.pattern_map = []
+        self.maxlen = 0
+        self.default = f
+        self.arrities = {}
+
+    def pattern(self, *argtypes):
+        @decorator
+        def _dispatch(f):
+            self.pattern_map = [(argtypes, f), *self.pattern_map]
+            self.maxlen = argmax(self.pattern_map, key=lambda x: len(x[0]))
+            return self
+
+        return _dispatch
+
+    def declare(self, f):
+        argspec = inspect.getfullargspec(f)
+        args = (argspec.args[:-len(argspec.defaults)] if argspec.defaults else
+                argspec.args)
+        anns = argspec.annotations
+        varargs = [Dispatch.star] if argspec.varargs else []
+
+        f = self.pattern(*[*[anns.get(arg, Dispatch._) for arg in args],
+                           *varargs])(f)
+        return f
+
+    def __call__(self, *args, **kwargs):
+
+        def find(args, n=self.maxlen):
+            if n == 0:
+                return self.default
+
+            for argtypes, fn in self.pattern_map:
+
+                for a, b in itertools.zip_longest(argtypes, args[:n]):
+                    if a is None or b is None:
+                        break
+                    if a is Dispatch._:
+                        continue
+                    if a is Dispatch.star:
+                        return fn
+                    if isinstance(a, Dispatch.Just):
+                        if a == b:
+                            continue
+                        else:
+                            break
+                    if isinstance(a, Dispatch.regex):
+                        if a(b):
+                            continue
+                        else:
+                            break
+
+                    if isinstance(a, Dispatch.pred):
+                        if a(b):
+                            continue
+                        else:
+                            break
+
+                    if not isinstance(b, a):
+                        break
+                else:
+                    return fn
+            else:
+                return find(args, dec(n))
+
+        return find(args)(*args, **kwargs)
+
 
 
 def reductions(fn, seq, default=nil):
@@ -156,9 +304,10 @@ def inc(n):
     return n + 1
 
 
-def first(iterable):
+@Dispatch
+@message
+def first():
     """Returns the first item in the collection. If iterable evaluates to None, returns None."""
-    return _reflect(iterable).first(iterable)
 
 
 def nth(seq, idx):
@@ -254,19 +403,21 @@ def juxt(*fns):
     return lambda x: [f(x) for f in fns]
 
 
-def last(iterable):
-    """Return the last item in an iterable, in linear time"""
-    return _reflect(iterable).last(iterable)
+@Dispatch
+@message
+def last(): """Return the last item in an iterable, in linear time"""
 
 
-def rest(iterable):
-    """Returns a generator of the items after the first. Will be an empty list if iterable is empty generator
+@Dispatch
+@message
+def rest():
+    """Returns a the rest of the items after the first.
+    Will be an empty list if iterable is empty generator
     or initial item type if empty iterable"""
-    return _reflect(iterable).rest(iterable)
 
 
 def iterate(fn, x):
-    """Returns a generator of x, (f x), (f (f x)) etc. f must be free of side-effects"""
+    """Returns a generator of x, (f x), (f (f x)) etc"""
 
     def _iterate(fn, x):
         val = x
@@ -312,10 +463,6 @@ def explode(*ds):
     return itertools.chain(*map(lambda d: d.items(), ds))
 
 
-def identity(x):
-    return x
-
-
 def merge(*ds):
     """Returns a dict that consists of the rest of the dicts merged onto
 the first.  If a key occurs in more than one dict, the mapping from
@@ -323,19 +470,21 @@ the latter (left-to-right) will be the mapping in the result."""
     return dict(itertools.chain(*(d.items() for d in ds)))
 
 
-def assoc(m, k, v):
+@Dispatch
+@message
+def assoc():
     """assoc[iate]. When applied to a map, returns a new map of the
   same (hashed/sorted) type, that contains the mapping of key(s) to
   val(s). When applied to a sequence, returns a new sequence of that
   type that contains val v at index k."""
-    return m.assoc(m, k, v)
 
 
-def dissoc(d, *ks):
+@Dispatch
+@message
+def dissoc():
     """dissoc[iate]. If d is a dict, returns a new map of the same (hashed/sorted) type,
 that does not contain a mapping for key(s).  If d is a str, returns a string without the letters listed as keys.
 For any other sequence type, returns a generator with the listed keys filtered."""
-    return _reflect(d).dissoc(d, *ks)
 
 
 def merge_with(fn, *ds):
@@ -370,21 +519,24 @@ keys into dictionaries.  I.e.:
         return assoc(d, first(key_list), val)
 
     if first(key_list) not in d:
-        return assoc(d, first(key_list), assoc_in({}, rest(key_list), val))
+        return assoc(d, first(key_list),
+                     assoc_in(d.__class__({}), rest(key_list), val))
 
     return update(d, first(key_list), assoc_in, rest(key_list), val)
 
 
 def terminal_dict(*ds):
     return not (
-    are_dicts(*ds) and all(map(lambda x: are_dicts(*x.values()), ds)))
+        are_dicts(*ds) and all(map(lambda x: are_dicts(*x.values()), ds)))
 
 
 def terminal_dicts(*ds):
     return all(map(terminal_dict, ds))
 
 
-def get(x, k=nil, not_found=None):
+@Dispatch
+@message
+def get():
     """Get key "k" from collection "x".
 
     >>> get({1: 2}, 1)
@@ -403,11 +555,11 @@ def get(x, k=nil, not_found=None):
     :param not_found:
     :return:
     """
-    return _reflect(x).get(x, k, not_found)
 
 
+@Dispatch
 def update(d, k, fn, *args, **kwargs):
-    return _reflect(d).update(d, k, fn, *args, **kwargs)
+    return d.update(d, k, fn, *args, **kwargs)
 
 
 def fpartial(f, *args, **kwargs):
@@ -460,6 +612,9 @@ class Dict(Protocol):
         ks = set(ks)
         return keyfilter(lambda x: x not in ks, d)
 
+    def assoc(self, k, v):
+        return self.__class__({**self, **{k: v}})
+
 
 # noinspection PyMethodParameters
 class List(Protocol):
@@ -483,6 +638,9 @@ class List(Protocol):
     def dissoc(d, *ks):
         ks = set(ks)
         return filterv(lambda x: x not in ks, d)
+
+    def assoc(self, k, v):
+        return [*self[:k], v, *self[k + 1]]
 
 
 # noinspection PyMethodParameters
@@ -548,7 +706,7 @@ class Iterable(Protocol):
         if k < 0 or not isinstance(k, int):
             raise Exception(
                 "\"k\" must be an index value greater than one, not {k}(type(k))")
-        x = iter(x)
+        x = iter(d)
         while True:
             if k == 0:
                 return next(x)
@@ -769,18 +927,29 @@ def ffirst(x):
 
 
 def case(x, *forms):
+    """
+    >>> case(5, 1, 'one', 3, 'three', 5, 'five')
+    'five'
+    """
     for a, b in partition(2, forms):
         if a == x:
             return b
 
 
 def remove(f, x):
-    """>>> list(remove(lambda x: x > 2, range(10)))
-    [0, 1]"""
+    """Remove elements from iterable based on predicate f.
+    >>> list(remove(lambda x: x > 2, range(10)))
+    [0, 1, 2]"""
     return filter(complement(f), x)
 
 
 def interleave(*xs):
+    """
+    >>> x = interleave(range(3), range(3), range(3))
+    >>> list(x)
+    [0, 0, 0, 1, 1, 1, 2, 2, 2]
+    """
+
     return (a for b in zip(*xs) for a in b)
 
 
@@ -789,7 +958,57 @@ def intereleavev(*xs):
 
 
 def repeatedly(x, times=None):
+    """
+
+    >>> r = repeatedly(6, times=7)
+    >>> sum(r)
+    42
+    """
     return itertools.repeat(x, times=times)
+
+
+def argmax(x, key=identity):
+    """
+    >>> argmax(['cat', 'rats', 'at'], key=len)
+    4
+
+    >>> argmax(['cat', 'rats', 'at'], key=lambda x: x.count('a'))
+    1
+    """
+    return key(max(x, key=key))
+
+
+def argmin(x, key=identity):
+    """Opposite of argmax"""
+    return key(min(x, key=key))
+
+
+def argsort(x, key=identity, reverse=False):
+    """Like sorted, but converts using key
+
+    >>> argsort(['cat', 'hats', 'rats'], key=len)
+    [3, 4, 4]
+
+    >>> argsort(['cat', 'hats', 'rats'], key=len, reverse=True)
+    [4, 4, 3]
+    """
+    return sorted((key(xi) for xi in x), reverse=reverse)
+
+
+#################
+# instantiation #
+#################
+
+def _instantiate(f, datatypes=(
+        (Dict, dict), (List, list), (Set, set), (Tuple, tuple),
+        (String, str))):
+    for protocol, datatype in datatypes:
+        if hasattr(protocol, f.__name__):
+            f.pattern(datatype)(getattr(protocol, f.__name__))
+
+
+critical_fns = mapv(_instantiate,
+                    [first, last, rest, assoc, dissoc, get, update])
 
 
 ##############
@@ -813,9 +1032,14 @@ def rreduce(fn, seq, default=None):
 
 def windows(n, seq):
     """Returns a lazy sequence of lists of n items each"""
+    from warnings import warn
     warn(DeprecationWarning(
         "windows is deprecated and will be removed in future versions"))
     if 'zip_longest' in dir(itertools):
         return itertools.zip_longest(*(seq[i::n] for i in range(n)))
     else:
         return itertools.izip_longest(*(seq[i::n] for i in range(n)))
+
+
+if __name__ == '__main__':
+    doctest.testmod()

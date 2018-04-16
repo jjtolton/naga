@@ -1,17 +1,15 @@
-import unittest
-
-from functools import reduce
-
-import operator
-
 import itertools
+import operator
+import unittest
+from functools import reduce, lru_cache
 
-from naga.tools import apply, merge, assoc, dissoc, merge_with, merge_with_default, assoc_in, update_in, terminal_dict, \
-    windows, append, explode, conj, first, nth, rest, reductions, take, iterate, drop
+from naga.tools import apply, merge, assoc, dissoc, merge_with, \
+    merge_with_default, assoc_in, update_in, terminal_dict, \
+    windows, append, explode, conj, first, nth, rest, reductions, take, \
+    iterate, drop, get, Dispatch
 
 
 class FunkyToolsTest(unittest.TestCase):
-
     def setUp(self):
         self.ds = a, b, c = [
             {1: 2,
@@ -25,7 +23,8 @@ class FunkyToolsTest(unittest.TestCase):
 
     def test_explode_convs_list_dicts_to_list_tuples(self):
         ds = self.ds
-        expected_res = {(1, 2), (3, 4), (4, 5), ('a', 'b'), ('c', 'd'), ('e', 'f'), ('name', 'taco')}
+        expected_res = {(1, 2), (3, 4), (4, 5), ('a', 'b'), ('c', 'd'),
+                        ('e', 'f'), ('name', 'taco')}
         res = set(apply(explode, ds))
         self.assertEqual(expected_res, res)
 
@@ -61,7 +60,8 @@ class FunkyToolsTest(unittest.TestCase):
     def test_merge_with_merges_only_ints(self):
         a, _, c = self.ds
         expected_res = {1: 4, 3: 8, 4: 10, 'name': 'taco'}
-        res = merge_with(lambda x, y: x + y if (isinstance(x, int) and isinstance(y, int)) else y, a, a, c, c)
+        res = merge_with(lambda x, y: x + y if (
+        isinstance(x, int) and isinstance(y, int)) else y, a, a, c, c)
         self.assertEqual(expected_res, res)
 
     def test_merge_with_doubles_strings_only(self):
@@ -73,7 +73,8 @@ class FunkyToolsTest(unittest.TestCase):
 
     def test_merge_with_default_cats_to_list(self):
         ds = self.ds
-        expected_res = {1: [2, 2], 3: [4, 4], 4: [5, 5], 'a': ['b', 'b'], 'c': ['d', 'd'], 'e': ['f', 'f'],
+        expected_res = {1: [2, 2], 3: [4, 4], 4: [5, 5], 'a': ['b', 'b'],
+                        'c': ['d', 'd'], 'e': ['f', 'f'],
                         'name': ['taco', 'taco']}
         res = merge_with_default(lambda x, y: x + [y], [], *(ds + ds))
         self.assertEqual(expected_res, res)
@@ -138,7 +139,6 @@ class FunkyToolsTest(unittest.TestCase):
         self.assertFalse(terminal_dict(b))
 
     def test_windows_creates_groups_of_3s(self):
-
         lst = range(1, 13)
         expected_res = [(1, 2, 3),
                         (4, 5, 6),
@@ -160,7 +160,6 @@ class FunkyToolsTest(unittest.TestCase):
         self.assertEqual(expected_res, res)
 
     def test_conjugate_conjugates_into_lst(self):
-
         lst = list('abc')
         appendos = 'def'
         expected_res = list('abcdef')
@@ -180,21 +179,18 @@ class FunkyToolsTest(unittest.TestCase):
         self.assertEqual(expected_res, res)
 
     def test_nth_returns_nth_item(self):
-
         a = [1, 2, 3]
         expected_res = 3
         res = nth(a, 2)
         self.assertEqual(expected_res, res)
 
     def test_rest_returns_none_on_empty_seq(self):
-
         seqs = [], tuple(), {}, ''
         expected_res = list(seqs)
         res = [rest(x) for x in seqs]
         self.assertEqual(expected_res, res)
 
     def test_layreduce_sums_numbers(self):
-
         nums = list(range(5))
         expected_res = [0, 1, 3, 6, 10]
         res = list(reductions(fn=operator.add,
@@ -208,14 +204,12 @@ class FunkyToolsTest(unittest.TestCase):
         self.assertEqual(expected_res, res)
 
     def test_iterate_iterates_over_fn(self):
-
         double = lambda x: x * 2
         expected_res = [2, 4, 8, 16, 32]
         res = list(take(5, iterate(double, 2)))
         self.assertEqual(expected_res, res)
 
     def test_take_takes_first_10_of_inf_seq(self):
-
         expected_res = list(range(10))
         res = list(take(10, itertools.count()))
         self.assertEqual(expected_res, res)
@@ -240,7 +234,8 @@ class FuncyToolsTest2(unittest.TestCase):
 
     def test_explode_convs_list_dicts_to_list_tuples(self):
         ds = self.ds
-        expected_res = {(1, 2), (3, 4), (4, 5), ('a', 'b'), ('c', 'd'), ('e', 'f'), ('name', 'taco')}
+        expected_res = {(1, 2), (3, 4), (4, 5), ('a', 'b'), ('c', 'd'),
+                        ('e', 'f'), ('name', 'taco')}
         res = set(explode(*ds))
         self.assertEqual(expected_res, res)
 
@@ -276,7 +271,8 @@ class FuncyToolsTest2(unittest.TestCase):
     def test_merge_with_merges_only_ints(self):
         a, _, c = self.ds
         expected_res = {1: 4, 3: 8, 4: 10, 'name': 'taco'}
-        res = merge_with(lambda x, y: x + y if (isinstance(x, int) and isinstance(y, int)) else y, a, a, c, c)
+        res = merge_with(lambda x, y: x + y if (
+        isinstance(x, int) and isinstance(y, int)) else y, a, a, c, c)
         self.assertEqual(expected_res, res)
 
     def test_merge_with_doubles_strings_only(self):
@@ -288,7 +284,8 @@ class FuncyToolsTest2(unittest.TestCase):
 
     def test_merge_with_default_cats_to_list(self):
         ds = self.ds
-        expected_res = {1: [2, 2], 3: [4, 4], 4: [5, 5], 'a': ['b', 'b'], 'c': ['d', 'd'], 'e': ['f', 'f'],
+        expected_res = {1: [2, 2], 3: [4, 4], 4: [5, 5], 'a': ['b', 'b'],
+                        'c': ['d', 'd'], 'e': ['f', 'f'],
                         'name': ['taco', 'taco']}
         res = merge_with_default(lambda x, y: x + [y], [], *(ds + ds))
         self.assertEqual(expected_res, res)
@@ -352,6 +349,200 @@ class FuncyToolsTest2(unittest.TestCase):
         b = {'b': {'this': 'ain\'t'}}
         self.assertTrue(terminal_dict(a))
         self.assertFalse(terminal_dict(b))
+
+    def test_dispatch_acts_as_expected(self):
+        @Dispatch
+        def foo(*_, **__):
+            raise TypeError("Unsupported Types")
+
+        @foo.pattern(foo.Just(0), foo.star)
+        def foo(a, *args):
+            return a
+
+        @foo.pattern(int, int, int, foo.star)
+        def foo(a, b, c, *args):
+            return a + b + c * sum(args)
+
+        @foo.pattern(int, int, int)
+        def foo(*args):
+            return sum(args)
+
+        @foo.pattern(int, int)
+        def foo(a, b):
+            return a * b
+
+        @foo.pattern(int)
+        def foo(a):
+            return a + a
+
+        @foo.pattern(foo.regex('.*cat'))
+        def foo(cat):
+            return f'there\'s a "cat" in {cat}'
+
+        class FooMsg:
+            def __init__(self, msg):
+                self.msg = msg
+
+            def __repr__(self):
+                return f'FooMsg(self.msg)'
+
+        @foo.pattern(FooMsg)
+        def foo(msg):
+            return repr(msg)
+
+        @foo.pattern(foo.GeneratorType)
+        def foo(args):
+            return foo(*args)
+
+        @foo.pattern(type(range(0)))
+        def foo(args):
+            return foo(*args)
+
+        @Dispatch
+        def fib(n):
+            return fib(n - 2) + fib(n - 1)
+
+        @fib.pattern(fib.pred(lambda x: x == 1 or x == 0))
+        def fib(n):
+            return n
+
+        self.assertEqual(fib(10), 55)
+
+        @foo.pattern(list, int)
+        def foo(args, n):
+            return get(args, n)
+
+        self.assertEqual(foo(list(range(10)), 2), 2)
+
+        self.assertEqual(foo(1, 2, 3, 4), 15)
+        self.assertEqual(foo(1, 2, 3), 6)
+        self.assertEqual(foo(1, 1), 1)
+        self.assertEqual(foo(1), 2)
+        self.assertEqual(foo('cat'), """there's a "cat" in cat""")
+        foomsg = FooMsg('name=taco')
+        self.assertEqual(foo(foomsg),
+                         repr(foomsg))
+        self.assertEqual(foo(range(3)), 3)
+        self.assertEqual(foo(x for x in range(3)), 3)
+        self.assertEqual(foo(0), 0)
+        self.assertEqual(foo(0, 1), 0)
+
+        with self.assertRaises(TypeError):
+            foo('dogs are great!')
+
+    def test_dispatch_on_recursion(self):
+        @Dispatch
+        def fib():
+            pass
+
+        @fib.pattern(int)
+        @lru_cache(None)
+        def fib(n):
+            return fib(n - 2) + fib(n - 1)
+
+        @fib.pattern(dict)
+        def fib(d):
+            return fib(d['n'] - 2) + fib(d['n'] - 1)
+
+        @fib.pattern(fib.Or(fib.Just(1), fib.Just(0)))
+        @lru_cache(None)
+        def fib(n):
+            return n
+
+
+        self.assertEqual(fib({'n': 100}), 354224848179261915075)
+
+    def test_dispatch_on_arrity(self):
+
+        @Dispatch
+        def foo():
+            pass
+
+        @foo.pattern(int)
+        def foo(x):
+            return foo(1, x)
+
+        @foo.pattern(int, int)
+        def foo(a, b):
+            return foo(a + b, a, b)
+
+        @foo.pattern(int, int, int)
+        def foo(*args):
+            return reduce(operator.mul, args)
+
+        @foo.pattern(type(range(0)))
+        def foo(args):
+            return foo(*args)
+
+        self.assertEqual(foo(2), 6)
+        self.assertEqual(foo(2), 6)
+        self.assertEqual(foo(1, 2, 3, 4), 24)
+        self.assertEqual(foo(range(2, 3)), 6)
+        self.assertEqual(foo(range(1, 2)), 2)
+        self.assertEqual(foo(range(1000)), 0)
+        self.assertEqual(foo(*range(1000)), 0)
+
+    def test_dispatch_with_generator_types(self):
+
+        @Dispatch
+        def foo():
+            for n in itertools.count():
+                yield n
+
+        @foo.pattern(list, int, foo.Or(foo.GeneratorType, foo.Just(None)))
+        def foo(l, n, ns=None):
+            if ns is None:
+                ns = foo()
+
+            if len(l) > n:
+                return l
+
+            return foo(l + [next(ns)], n, ns)
+
+        @foo.pattern(int)
+        def foo(n):
+            return foo([], n, foo())
+
+    def test_declare_for_pattern_registration(self):
+
+        @Dispatch
+        def foo(*args):
+            raise TypeError("Unhandled type(s)")
+
+        @foo.declare
+        def int_generator() -> foo.GeneratorType:
+            for n in itertools.count():
+                yield n
+
+        @foo.declare
+        def accumulate_list(
+                l: list,
+                n: int,
+                ns: foo.Or(foo.GeneratorType, foo.Just(None)) = None) -> list:
+            if ns is None:
+                ns = foo()
+
+            if len(l) > n:
+                return l
+
+            return foo(l + [next(ns)], n, ns)
+
+        @foo.declare
+        def initiate_list(n: int) -> list:
+            return foo([], n, foo())
+
+        @foo.declare
+        def make_sum_string(
+                x: str,
+                *args) -> str:
+            return x.format(sum(args))
+
+        @foo.declare
+        def _(x: int, *args) -> str:
+            return sum([x, *args])
+
+        self.assertEqual(foo(10), list(range(11)))
+
 
 if __name__ == '__main__':
     unittest.main()
