@@ -16,6 +16,7 @@ seq_types = list, tuple, str
 def identity(x):
     return x
 
+
 @decorator
 def message(f):
     def _(x, *args, **kwargs):
@@ -94,10 +95,17 @@ class Dispatch:
         self.default = f
         self.arrities = {}
 
+    def __mul__(self, other):
+        return partial(apply, other)
+
     def pattern(self, *argtypes):
         @decorator
         def _dispatch(f):
-            self.pattern_map = [(argtypes, f), *self.pattern_map]
+            sortkey = lambda x: (1 if len(x[0]) < 1 else
+                                 0 if not isinstance(x[0][0], set)
+                                 else -1)
+
+            self.pattern_map = sorted([(argtypes, f), *self.pattern_map], key=sortkey)
             self.maxlen = argmax(self.pattern_map, key=lambda x: len(x[0]))
             return self
 
@@ -116,7 +124,7 @@ class Dispatch:
             fn = f
 
         fout = self.pattern(*[*[anns.get(arg, Dispatch._) for arg in args],
-                           *varargs])(fn)
+                              *varargs])(fn)
         return fout
 
     def __call__(self, *args, **kwargs):
@@ -126,32 +134,40 @@ class Dispatch:
                 return self.default
 
             for argtypes, fn in self.pattern_map:
-
-                for a, b in itertools.zip_longest(argtypes, args[:n]):
-                    if a is None or b is None:
+                for argtype, arg in itertools.zip_longest(argtypes, args[:n]):
+                    if argtype is None or arg is None:
                         break
-                    if a is Dispatch._:
+                    if argtype is Dispatch._:
                         continue
-                    if a is Dispatch.star:
+                    if argtype is Dispatch.star:
                         return fn
-                    if isinstance(a, Dispatch.Just):
-                        if a == b:
-                            continue
-                        else:
-                            break
-                    if isinstance(a, Dispatch.regex):
-                        if a(b):
-                            continue
-                        else:
-                            break
-
-                    if isinstance(a, Dispatch.pred):
-                        if a(b):
+                    # if isinstance(argtype, Dispatch.Just):
+                    #     if argtype == arg:
+                    #         continue
+                    #     else:
+                    #         break
+                    if isinstance(argtype, Dispatch.regex):
+                        if argtype(arg):
                             continue
                         else:
                             break
 
-                    if not isinstance(b, a):
+                    if isinstance(argtype, Dispatch.pred):
+                        if argtype(arg):
+                            continue
+                        else:
+                            break
+
+                    if isinstance(argtype, set):
+                        try:
+                            if arg not in argtype:
+                                break
+                            else:
+                                continue
+                        except TypeError:
+                            break
+
+                    if not isinstance(arg, argtype):
                         break
                 else:
                     return fn
@@ -159,7 +175,6 @@ class Dispatch:
                 return find(args, dec(n))
 
         return find(args)(*args, **kwargs)
-
 
 
 def reductions(fn, seq, default=nil):

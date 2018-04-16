@@ -1,7 +1,7 @@
 import itertools
 import operator
 import unittest
-from functools import reduce, lru_cache, partial
+from functools import reduce, lru_cache
 
 from naga.tools import apply, merge, assoc, dissoc, merge_with, \
     merge_with_default, assoc_in, update_in, terminal_dict, \
@@ -559,11 +559,27 @@ class FuncyToolsTest2(unittest.TestCase):
         self.assertEqual(foo('hey'), 326)
 
         @foo.declare
-        def split_dstring(d: dict, k: foo.Just('key')) -> (
-        lambda x: x.split('_')):
+        def split_dstring(d: dict, k: {'key'}) -> (
+                lambda x: x.split('_')):
             return d[k]
 
         self.assertEqual(foo({'key': 'hey_there'}, 'key'), ['hey', 'there'])
+
+    def test_set_notation_for_dispatch(self):
+
+        @Dispatch
+        def fib(): 'fib'
+
+        @fib.declare
+        def fib(n: {0, 1}):
+            return n
+
+        @fib.declare
+        def fib(n: int):
+            return fib(n - 2) + fib(n - 1)
+
+
+        self.assertEqual(fib(10), 55)
 
 
 if __name__ == '__main__':
