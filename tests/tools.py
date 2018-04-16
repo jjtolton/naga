@@ -6,7 +6,7 @@ from functools import reduce, lru_cache
 from naga.tools import apply, merge, assoc, dissoc, merge_with, \
     merge_with_default, assoc_in, update_in, terminal_dict, \
     windows, append, explode, conj, first, nth, rest, reductions, take, \
-    iterate, drop, get, Dispatch, identity
+    iterate, drop, get, Dispatch, identity, gentype, nonep
 
 
 class FunkyToolsTest(unittest.TestCase):
@@ -355,11 +355,11 @@ class FuncyToolsTest2(unittest.TestCase):
         def foo(*_, **__):
             raise TypeError("Unsupported Types")
 
-        @foo.pattern(foo.Just(0), foo.star)
+        @foo.pattern({0}, foo.Star)
         def foo(a, *args):
             return a
 
-        @foo.pattern(int, int, int, foo.star)
+        @foo.pattern(int, int, int, foo.Star)
         def foo(a, b, c, *args):
             return a + b + c * sum(args)
 
@@ -375,22 +375,22 @@ class FuncyToolsTest2(unittest.TestCase):
         def foo(a):
             return a + a
 
-        @foo.pattern(foo.regex('.*cat'))
+        @foo.pattern('.*cat')
         def foo(cat):
-            return f'there\'s a "cat" in {cat}'
+            return 'there\'s a "cat" in {}'.format(cat)
 
         class FooMsg:
             def __init__(self, msg):
                 self.msg = msg
 
             def __repr__(self):
-                return f'FooMsg(self.msg)'
+                return 'FooMsg({})'.format(self.msg)
 
         @foo.pattern(FooMsg)
         def foo(msg):
             return repr(msg)
 
-        @foo.pattern(foo.GeneratorType)
+        @foo.pattern(foo.Iterator)
         def foo(args):
             return foo(*args)
 
@@ -402,7 +402,7 @@ class FuncyToolsTest2(unittest.TestCase):
         def fib(n):
             return fib(n - 2) + fib(n - 1)
 
-        @fib.pattern(fib.pred(lambda x: x == 1 or x == 0))
+        @fib.pattern([lambda x: x == 1 or x == 0])
         def fib(n):
             return n
 
@@ -435,19 +435,19 @@ class FuncyToolsTest2(unittest.TestCase):
         def fib():
             pass
 
+        @fib.pattern({0, 1})
+        @lru_cache(None)
+        def fib_base_case(n: {0, 1}):
+            return n
+
         @fib.pattern(int)
         @lru_cache(None)
-        def fib(n):
+        def fib_recursive_case(n):
             return fib(n - 2) + fib(n - 1)
 
         @fib.pattern(dict)
-        def fib(d):
+        def fib_dict(d):
             return fib(d['n'] - 2) + fib(d['n'] - 1)
-
-        @fib.pattern(fib.Or(fib.Just(1), fib.Just(0)))
-        @lru_cache(None)
-        def fib(n):
-            return n
 
         self.assertEqual(fib({'n': 100}), 354224848179261915075)
 
@@ -488,7 +488,7 @@ class FuncyToolsTest2(unittest.TestCase):
             for n in itertools.count():
                 yield n
 
-        @foo.pattern(list, int, foo.Or(foo.GeneratorType, foo.Just(None)))
+        @foo.pattern(list, int, foo.Iterator)
         def foo(l, n, ns=None):
             if ns is None:
                 ns = foo()
@@ -517,8 +517,8 @@ class FuncyToolsTest2(unittest.TestCase):
         def accumulate_list(
                 x: list,
                 n: int,
-                ns: foo.Or(foo.GeneratorType,
-                           foo.Just(None)) = None):
+                ns: [gentype,
+                     nonep] = None):
             if ns is None:
                 ns = foo()
 
@@ -577,7 +577,6 @@ class FuncyToolsTest2(unittest.TestCase):
         @fib.declare
         def fib(n: int):
             return fib(n - 2) + fib(n - 1)
-
 
         self.assertEqual(fib(10), 55)
 

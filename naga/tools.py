@@ -1,17 +1,23 @@
 import collections
-import doctest
 import heapq
 import inspect
 import itertools
 import re
 import types
-from _operator import or_
 from functools import partial, reduce
 
 from naga import nil
 from naga.utils import Namespaced, decorator
 
 seq_types = list, tuple, str
+
+
+def gentype(x):
+    return hasattr(x, '__iter__') and hasattr(x, '__next__')
+
+
+def typeq(x):
+    return lambda a: isinstance(a, x)
 
 
 def identity(x):
@@ -26,63 +32,76 @@ def message(f):
     return _
 
 
+@message
+def classify():
+    """a generic classification method"""
+
+
 class PatternMap(list):
     counter = itertools.count()
 
     def score(self, argtypes):
-
         def _score(x):
-            if isinstance(x, set):
-                return 0
+            return x.rank
 
-            if isinstance(x, list):
-                return 1
-
-            if x == Dispatch._:
-                return 2
-
-            return 3
         return tuple([_score(argtype) for argtype in argtypes])
-
-
 
     def push(self, item):
         argtypes, fn = item
-
-        # most specific to least specific
-        # 0. concrete types -> set
-        # 1. types -> type
-        # 2. predicates -> list
-        # 3. fall through
-
         score = self.score(argtypes)
-        scores = tuple(sc)
-
-        heapq.heappush(self, (scores, next(PatternMap.counter), item))
+        heapq.heappush(self, (score, next(PatternMap.counter), item))
 
     def pop(self):
         return heapq.heappop(self)
 
+    def __iter__(self):
+        items = []
+
+        for _ in range(len(self)):
+            item = self.pop()
+            items.append(item)
+            yield item[-1]
+
+        self.extend(items)
+        heapq.heapify(self)
+
 
 @decorator
 class Dispatch:
-    class _:
-        pass
+    class ArgType:
+        rank = None
 
-    class Just:
-        def __init__(self, x):
-            self.x = x
+        @staticmethod
+        def classify(self, x):
+            raise NotImplementedError
 
-        def __eq__(self, other):
-            return self.x == other
+        def __call__(self, *args, **kwargs):
+            raise NotImplementedError
 
-        def __call__(self, x):
-            return self == x
+    class Any(ArgType):
+        rank = float('inf')
 
-    class star:
-        pass
+        @staticmethod
+        def classify(self, x):
+            return x is self
 
-    class pred:
+        def __call__(self, *args, **kwargs):
+            return True
+
+        def __new__(cls, *args, **kwargs):
+            return cls
+
+        def __repr__(self):
+            return 'Any(*)'
+
+    class Star(Any):
+        rank = float('inf')
+
+    class Pred(ArgType):
+        @staticmethod
+        def classify(self, x):
+            raise NotImplementedError
+
         def __init__(self, f, type=nil):
             self.f = f
             self.t = type
@@ -96,56 +115,129 @@ class Dispatch:
             else:
                 return self.f(arg)
 
-    class Or(pred):
-        def __init__(self, *types):
-            self.args = types
-            super().__init__(self.__call__)
+    class Or(set):
+        rank = 0
 
         def __call__(self, x):
-            return reduce(or_, [
-                (isinstance(a, Dispatch.Just) and a(x) or
-                 isinstance(a, Dispatch.pred) and a(x) or
-                 not isinstance(a, Dispatch.Just) and isinstance(x, a))
-                for a in self.args])
+            for item in self:
+                if item == x:
+                    return True
+                elif isinstance(self, Dispatch.Iterator) and item(x):
+                    return True
+            return False
 
-    class iterator(pred):
+        @staticmethod
+        def classify(self, x):
+            return isinstance(x, set)
 
-        def __init__(self):
-            super().__init__(
-                lambda x: hasattr(x, '__iter__') and hasattr(x, '__next__'))
+    class OrFn(set):
 
-    GeneratorType = iterator()
+        rank = 2
 
-    class regex(pred):
+        def __call__(self, x):
+            for fn in self:
+                if fn(x):
+                    return True
+            return False
+
+        @staticmethod
+        def classify(self, x):
+            return isinstance(x, list)
+
+    class AndFn(set):
+        rank = 3
+
+        def __call__(self, x):
+            for fn in self:
+                if not fn(x):
+                    return False
+            return True
+
+        @staticmethod
+        def classify(self, x):
+            return (isinstance(x, list) and
+                    len(x) == 1 and
+                    isinstance(x[0], list))
+
+    # class Iterator(Pred):
+    #     rank = 3
+    #
+    #     def __init__(self):
+    #         super().__init__((lambda x: hasattr(x, '__iter__') and
+    #                                     hasattr(x, '__next__')))
+    #
+    #     @staticmethod
+    #     def classify(self, x):
+    #         return x is self.__class__
+    #
+    #     @staticmethod
+    #     def __eq__(cls, other):
+    #         return cls(other)
+
+    Iterator = types.GeneratorType
+
+    class Regex(Pred):
+        rank = 2
+
+        regex_type = type(re.compile(''))
 
         def __init__(self, s, flags=0, type=str):
             super().__init__(lambda x: re.match(s, x, flags=flags),
                              type=type)
 
-    class Type(pred):
+        @staticmethod
+        def classify(self, x):
+            if isinstance(x, str):
+                return True
+            elif isinstance(x, bytes):
+                return True
+            elif isinstance(x, self.regex_type):
+                return True
+            return False
+
+    class Type(Pred):
+        rank = 5
+
+        @staticmethod
+        def classify(self, x):
+            return True
 
         def __init__(self, x):
-            super().__init__(identity, type(x))
+            super().__init__(constantly(True), x)
+
+        def __repr__(self):
+            return 'Type({})'.format(self.t)
 
     def __init__(self, f=identity):
         self.f = f
         self.pattern_map = PatternMap()
         self.maxlen = 0
         self.default = f
-        self.arrities = {}
 
     def __mul__(self, other):
         return partial(apply, other)
 
+    def classify(self,
+                 argtypes,
+                 classes=(Or, OrFn, AndFn, Regex, Any, Star, Type)):
+
+        clss = []
+
+        for argtype in argtypes:
+            for cls in classes:
+                if classify(cls, argtype):
+                    clss.append(cls(argtype))
+                    break
+            else:
+                raise TypeError(
+                    "Unsupported type invocation: {}".format(argtype))
+
+        return tuple(clss)
+
     def pattern(self, *argtypes):
         @decorator
         def _dispatch(f):
-            sortkey = lambda x: (1 if len(x[0]) < 1 else
-                                 0 if not isinstance(x[0][0], set)
-                                 else -1)
-
-            # self.pattern_map = sorted([(argtypes, f), *self.pattern_map], key=sortkey)
-            self.pattern_map.push((argtypes, f))
+            self.pattern_map.push((self.classify(argtypes), f))
             self.maxlen = argmax(self.pattern_map, key=lambda x: len(x[0]))
             return self
 
@@ -153,62 +245,35 @@ class Dispatch:
 
     def declare(self, f):
         argspec = inspect.getfullargspec(f)
-        args = (argspec.args[:-len(argspec.defaults)] if argspec.defaults else
-                argspec.args)
+        args = argspec.args
         anns = argspec.annotations
-        varargs = [Dispatch.star] if argspec.varargs else []
+        varargs = [Dispatch.Star] if argspec.varargs else []
         return_fn = anns.get('return')
         if return_fn:
             fn = lambda *args, **kwargs: return_fn(f(*args, **kwargs))
         else:
             fn = f
 
-        fout = self.pattern(*[*[anns.get(arg, Dispatch._) for arg in args],
-                              *varargs])(fn)
+        argvals = [anns.get(arg, Dispatch.Any) for arg in args]
+        fout = self.pattern(
+            *[*argvals, *varargs])(fn)
         return fout
 
     def __call__(self, *args, **kwargs):
 
         def find(args, n=self.maxlen):
-            if n == 0:
+            if n < 0:
                 return self.default
 
-            for argtypes, fn in (self.pattern_map.pop() for _ in
-                                 range(len(self.pattern_map))):
+            for argtypes, fn in list(self.pattern_map):
+
+                if len(argtypes) != len(args[:n]):
+                    continue
+                elif len(argtypes) == 0 and len(args) == 0:
+                    return fn
+
                 for argtype, arg in itertools.zip_longest(argtypes, args[:n]):
-                    if argtype is None or arg is None:
-                        break
-                    if argtype is Dispatch._:
-                        continue
-                    if argtype is Dispatch.star:
-                        return fn
-                    # if isinstance(argtype, Dispatch.Just):
-                    #     if argtype == arg:
-                    #         continue
-                    #     else:
-                    #         break
-                    if isinstance(argtype, Dispatch.regex):
-                        if argtype(arg):
-                            continue
-                        else:
-                            break
-
-                    if isinstance(argtype, Dispatch.pred):
-                        if argtype(arg):
-                            continue
-                        else:
-                            break
-
-                    if isinstance(argtype, set):
-                        try:
-                            if arg not in argtype:
-                                break
-                            else:
-                                continue
-                        except TypeError:
-                            break
-
-                    if not isinstance(arg, argtype):
+                    if not argtype(arg):
                         break
                 else:
                     return fn
@@ -216,6 +281,9 @@ class Dispatch:
                 return find(args, dec(n))
 
         return find(args)(*args, **kwargs)
+
+    def __repr__(self):
+        return 'Dispatch({})'.format(self.f.__name__)
 
 
 def reductions(fn, seq, default=nil):
@@ -365,7 +433,6 @@ def inc(n):
 
 
 @Dispatch
-@message
 def first():
     """Returns the first item in the collection. If iterable evaluates to None, returns None."""
 
@@ -464,12 +531,10 @@ def juxt(*fns):
 
 
 @Dispatch
-@message
 def last(): """Return the last item in an iterable, in linear time"""
 
 
 @Dispatch
-@message
 def rest():
     """Returns a the rest of the items after the first.
     Will be an empty list if iterable is empty generator
@@ -531,7 +596,6 @@ the latter (left-to-right) will be the mapping in the result."""
 
 
 @Dispatch
-@message
 def assoc():
     """assoc[iate]. When applied to a map, returns a new map of the
   same (hashed/sorted) type, that contains the mapping of key(s) to
@@ -540,7 +604,6 @@ def assoc():
 
 
 @Dispatch
-@message
 def dissoc():
     """dissoc[iate]. If d is a dict, returns a new map of the same (hashed/sorted) type,
 that does not contain a mapping for key(s).  If d is a str, returns a string without the letters listed as keys.
@@ -595,7 +658,6 @@ def terminal_dicts(*ds):
 
 
 @Dispatch
-@message
 def get():
     """Get key "k" from collection "x".
 
@@ -1102,16 +1164,28 @@ def windows(n, seq):
 
 
 if __name__ == '__main__':
-
     @Dispatch
     def foo():
         'foo'
+
 
     @foo.declare
     def foo(x, y):
         return x, y
 
 
+    @foo.declare
+    def foo(x: int, y: {1, 2}):
+        return x + y
 
 
-    # doctest.testmod()
+    @foo.declare
+    def foo(x, y: {1, 2}):
+        return x * y
+
+
+    print(foo(1, 2))
+    print(foo(1, 3))
+    print(foo('cat', 3))
+    print(foo('cat', 2))
+    print(foo('cat', 1))
