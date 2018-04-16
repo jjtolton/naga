@@ -1,12 +1,12 @@
 import itertools
 import operator
 import unittest
-from functools import reduce, lru_cache
+from functools import reduce, lru_cache, partial
 
 from naga.tools import apply, merge, assoc, dissoc, merge_with, \
     merge_with_default, assoc_in, update_in, terminal_dict, \
     windows, append, explode, conj, first, nth, rest, reductions, take, \
-    iterate, drop, get, Dispatch
+    iterate, drop, get, Dispatch, identity
 
 
 class FunkyToolsTest(unittest.TestCase):
@@ -61,7 +61,7 @@ class FunkyToolsTest(unittest.TestCase):
         a, _, c = self.ds
         expected_res = {1: 4, 3: 8, 4: 10, 'name': 'taco'}
         res = merge_with(lambda x, y: x + y if (
-        isinstance(x, int) and isinstance(y, int)) else y, a, a, c, c)
+            isinstance(x, int) and isinstance(y, int)) else y, a, a, c, c)
         self.assertEqual(expected_res, res)
 
     def test_merge_with_doubles_strings_only(self):
@@ -272,7 +272,7 @@ class FuncyToolsTest2(unittest.TestCase):
         a, _, c = self.ds
         expected_res = {1: 4, 3: 8, 4: 10, 'name': 'taco'}
         res = merge_with(lambda x, y: x + y if (
-        isinstance(x, int) and isinstance(y, int)) else y, a, a, c, c)
+            isinstance(x, int) and isinstance(y, int)) else y, a, a, c, c)
         self.assertEqual(expected_res, res)
 
     def test_merge_with_doubles_strings_only(self):
@@ -449,7 +449,6 @@ class FuncyToolsTest2(unittest.TestCase):
         def fib(n):
             return n
 
-
         self.assertEqual(fib({'n': 100}), 354224848179261915075)
 
     def test_dispatch_on_arrity(self):
@@ -510,38 +509,61 @@ class FuncyToolsTest2(unittest.TestCase):
             raise TypeError("Unhandled type(s)")
 
         @foo.declare
-        def int_generator() -> foo.GeneratorType:
+        def int_generator():
             for n in itertools.count():
                 yield n
 
         @foo.declare
         def accumulate_list(
-                l: list,
+                x: list,
                 n: int,
-                ns: foo.Or(foo.GeneratorType, foo.Just(None)) = None) -> list:
+                ns: foo.Or(foo.GeneratorType,
+                           foo.Just(None)) = None):
             if ns is None:
                 ns = foo()
 
-            if len(l) > n:
-                return l
+            if len(x) > n:
+                return x
 
-            return foo(l + [next(ns)], n, ns)
+            return foo(x + [next(ns)], n, ns)
 
         @foo.declare
-        def initiate_list(n: int) -> list:
+        def initiate_list(n: int):
             return foo([], n, foo())
 
         @foo.declare
-        def make_sum_string(
-                x: str,
-                *args) -> str:
+        def make_sum_string(x: str, *args):
             return x.format(sum(args))
 
-        @foo.declare
-        def _(x: int, *args) -> str:
-            return sum([x, *args])
-
         self.assertEqual(foo(10), list(range(11)))
+
+        @foo.declare
+        def _(x: int, *args) -> sum:
+            return [x, *args]
+
+    def test_declare_return_post_processing(self):
+
+        foo = Dispatch(identity)
+
+        @foo.declare
+        def int_to_list(x: int) -> list:
+            return range(x)
+
+        @foo.declare
+        def str_to_int(
+                x: str
+        ) -> lambda x: reduce(lambda a, b: a + ord(b), x, 0):
+            return x
+
+        self.assertEqual(foo(5), list(range(5)))
+        self.assertEqual(foo('hey'), 326)
+
+        @foo.declare
+        def split_dstring(d: dict, k: foo.Just('key')) -> (
+        lambda x: x.split('_')):
+            return d[k]
+
+        self.assertEqual(foo({'key': 'hey_there'}, 'key'), ['hey', 'there'])
 
 
 if __name__ == '__main__':

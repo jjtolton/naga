@@ -16,7 +16,6 @@ seq_types = list, tuple, str
 def identity(x):
     return x
 
-
 @decorator
 def message(f):
     def _(x, *args, **kwargs):
@@ -110,12 +109,15 @@ class Dispatch:
                 argspec.args)
         anns = argspec.annotations
         varargs = [Dispatch.star] if argspec.varargs else []
-        return_fn = argspec.annotations.get('return', identity)
-        fn = compose([f, return_fn])
+        return_fn = anns.get('return')
+        if return_fn:
+            fn = lambda *args, **kwargs: return_fn(f(*args, **kwargs))
+        else:
+            fn = f
 
-        f = self.pattern(*[*[anns.get(arg, Dispatch._) for arg in args],
+        fout = self.pattern(*[*[anns.get(arg, Dispatch._) for arg in args],
                            *varargs])(fn)
-        return f
+        return fout
 
     def __call__(self, *args, **kwargs):
 
@@ -367,13 +369,13 @@ def tenth(seq):
     return nth(seq, 9)
 
 
-def compose(fns, x=None):
+def compose(fns, x=nil):
     """Takes a set of functions and returns a fn that is the composition
 of those fns.  The returned fn takes a variable number of args,
 applies the rightmost of fns to the args, the next
 fn (left-to-right) to the result, etc.  If no value is supplied, returns a
 stateful transducer"""
-    if x is None:
+    if x is nil:
         return partial(compose, fns)
 
     return reduce(lambda a, b: b(a), fns, x)
