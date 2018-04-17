@@ -144,8 +144,11 @@ class Dispatch:
         def classify(self, x):
             return isinstance(x, list)
 
-    class AndFn(set):
+    class AndFn(tuple):
         rank = 3
+
+        def __new__(cls, x):
+            return super().__new__(cls, tuple(x[0]))
 
         def __call__(self, x):
             for fn in self:
@@ -219,7 +222,7 @@ class Dispatch:
 
     def classify(self,
                  argtypes,
-                 classes=(Or, OrFn, AndFn, Regex, Any, Star, Type)):
+                 classes=(AndFn, Or, OrFn, Regex, Any, Star, Type)):
 
         clss = []
 
@@ -267,9 +270,7 @@ class Dispatch:
 
             for argtypes, fn in list(self.pattern_map):
 
-                if len(argtypes) != len(args[:n]):
-                    continue
-                elif len(argtypes) == 0 and len(args) == 0:
+                if len(argtypes) == 0 and len(args) == 0:
                     return fn
 
                 for argtype, arg in itertools.zip_longest(argtypes, args[:n]):
@@ -1131,61 +1132,3 @@ def _instantiate(f, datatypes=(
 
 critical_fns = mapv(_instantiate,
                     [first, last, rest, assoc, dissoc, get, update])
-
-
-##############
-# deprecated #
-##############
-
-def rreduce(fn, seq, default=None):
-    """'readable reduce' - More readable version of reduce with arrity-based dispatch; passes keyword arguments
-    to functools.reduce"""
-    from warnings import warn
-    warn(DeprecationWarning(
-        "rreduce is deprecated and will be removed in future versions"))
-
-    # if two arguments
-    if default is None:
-        return reduce(fn, seq)
-
-    # if three arguments
-    return reduce(fn, seq, default)
-
-
-def windows(n, seq):
-    """Returns a lazy sequence of lists of n items each"""
-    from warnings import warn
-    warn(DeprecationWarning(
-        "windows is deprecated and will be removed in future versions"))
-    if 'zip_longest' in dir(itertools):
-        return itertools.zip_longest(*(seq[i::n] for i in range(n)))
-    else:
-        return itertools.izip_longest(*(seq[i::n] for i in range(n)))
-
-
-if __name__ == '__main__':
-    @Dispatch
-    def foo():
-        'foo'
-
-
-    @foo.declare
-    def foo(x, y):
-        return x, y
-
-
-    @foo.declare
-    def foo(x: int, y: {1, 2}):
-        return x + y
-
-
-    @foo.declare
-    def foo(x, y: {1, 2}):
-        return x * y
-
-
-    print(foo(1, 2))
-    print(foo(1, 3))
-    print(foo('cat', 3))
-    print(foo('cat', 2))
-    print(foo('cat', 1))

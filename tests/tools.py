@@ -6,7 +6,7 @@ from functools import reduce, lru_cache
 from naga.tools import apply, merge, assoc, dissoc, merge_with, \
     merge_with_default, assoc_in, update_in, terminal_dict, \
     windows, append, explode, conj, first, nth, rest, reductions, take, \
-    iterate, drop, get, Dispatch, identity, gentype, nonep
+    iterate, drop, get, Dispatch, identity, gentype, nonep, typeq
 
 
 class FunkyToolsTest(unittest.TestCase):
@@ -579,6 +579,28 @@ class FuncyToolsTest2(unittest.TestCase):
             return fib(n - 2) + fib(n - 1)
 
         self.assertEqual(fib(10), 55)
+
+    def test_and_fn_notation_for_dispatch(self):
+
+        @Dispatch
+        def foo():
+            pass
+
+        @foo.declare
+        def foo(*args, **kwargs):
+            return 'not even close!'
+
+        @foo.declare
+        def foo(n: [[typeq(int), lambda x: 41 < x < 43]]):
+            return 'the answer'
+
+        @foo.declare
+        def foo(n: int):
+            return 'not the answer'
+
+        self.assertEqual(foo(42), 'the answer')
+        self.assertEqual(foo(68), 'not the answer')
+        self.assertEqual(foo('taco'), 'not even close!')
 
 
 if __name__ == '__main__':
