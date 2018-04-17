@@ -270,10 +270,13 @@ class Dispatch:
 
             for argtypes, fn in list(self.pattern_map):
 
-                if len(argtypes) == 0 and len(args) == 0:
+                if len(argtypes) < len(args[:n]):
+                    continue
+                elif len(argtypes) == 0 and len(args) == 0:
                     return fn
 
                 for argtype, arg in itertools.zip_longest(argtypes, args[:n]):
+
                     if not argtype(arg):
                         break
                 else:

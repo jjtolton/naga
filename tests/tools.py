@@ -5,8 +5,8 @@ from functools import reduce, lru_cache
 
 from naga.tools import apply, merge, assoc, dissoc, merge_with, \
     merge_with_default, assoc_in, update_in, terminal_dict, \
-    windows, append, explode, conj, first, nth, rest, reductions, take, \
-    iterate, drop, get, Dispatch, identity, gentype, nonep, typeq
+    append, explode, conj, first, nth, rest, reductions, take, \
+    iterate, drop, get, Dispatch, identity, gentype, nonep, typeq, partition
 
 
 class FunkyToolsTest(unittest.TestCase):
@@ -138,19 +138,19 @@ class FunkyToolsTest(unittest.TestCase):
         self.assertTrue(terminal_dict(a))
         self.assertFalse(terminal_dict(b))
 
-    def test_windows_creates_groups_of_3s(self):
+    def test_partition_creates_groups_of_3s(self):
         lst = range(1, 13)
         expected_res = [(1, 2, 3),
                         (4, 5, 6),
                         (7, 8, 9),
                         (10, 11, 12)]
-        res = list(windows(3, lst))
+        res = list(partition(3, lst))
         self.assertEqual(expected_res, res)
 
-    def test_windows_creates_groups_of_1s(self):
+    def test_partition_creates_groups_of_1s(self):
         lst = range(5)
         expected_res = [(x,) for x in lst]
-        res = list(windows(1, lst))
+        res = list(partition(1, lst))
         self.assertEqual(expected_res, res)
 
     def test_append_concatenates_lists(self):
