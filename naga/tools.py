@@ -274,6 +274,9 @@ class Dispatch:
                     continue
                 elif len(argtypes) == 0 and len(args) == 0:
                     return fn
+                elif ((len(argtypes) > len(args)) and
+                              Dispatch.Star not in argtypes):
+                    continue
 
                 for argtype, arg in itertools.zip_longest(argtypes, args[:n]):
 
