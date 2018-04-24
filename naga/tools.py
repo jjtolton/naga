@@ -162,21 +162,6 @@ class Dispatch:
                     len(x) == 1 and
                     isinstance(x[0], list))
 
-    # class Iterator(Pred):
-    #     rank = 3
-    #
-    #     def __init__(self):
-    #         super().__init__((lambda x: hasattr(x, '__iter__') and
-    #                                     hasattr(x, '__next__')))
-    #
-    #     @staticmethod
-    #     def classify(self, x):
-    #         return x is self.__class__
-    #
-    #     @staticmethod
-    #     def __eq__(cls, other):
-    #         return cls(other)
-
     Iterator = types.GeneratorType
 
     class Regex(Pred):
@@ -742,7 +727,7 @@ class Dict(Protocol):
         return keyfilter(lambda x: x not in ks, d)
 
     def assoc(self, k, v):
-        return self.__class__({**self, **{k: v}})
+        return {**self, **{k: v}}
 
 
 # noinspection PyMethodParameters
