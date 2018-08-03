@@ -6,7 +6,8 @@ from functools import reduce, lru_cache
 from naga.tools import apply, merge, assoc, dissoc, merge_with, \
     merge_with_default, assoc_in, update_in, terminal_dict, \
     append, explode, conj, first, nth, rest, reductions, take, \
-    iterate, drop, get, Dispatch, identity, gentype, nonep, typeq, partition
+    iterate, drop, get, Dispatch, identity, gentype, nonep, typeq, partition, \
+    comp, inc, mapv
 
 
 class FunkyToolsTest(unittest.TestCase):
@@ -218,6 +219,20 @@ class FunkyToolsTest(unittest.TestCase):
         expected_res = list(range(5, 10))
         res = list(take(5, drop(5, itertools.count())))
         self.assertEqual(expected_res, res)
+
+    def test_comp_composes_add1_mul2(self):
+        expected_res = 6
+        res = comp(lambda x: x * 2, inc, inc, inc)(0)
+        self.assertEqual(expected_res, res)
+
+    def test_mapv_comp_inc_mul2(self):
+        expected_res = [((i+1) * 2) for i in range(10)]
+        res = mapv(comp(lambda x: x * 2, inc), range(10))
+        self.assertEqual(expected_res, res)
+
+
+
+
 
 
 class FuncyToolsTest2(unittest.TestCase):
@@ -601,6 +616,8 @@ class FuncyToolsTest2(unittest.TestCase):
         self.assertEqual(foo(42), 'the answer')
         self.assertEqual(foo(68), 'not the answer')
         self.assertEqual(foo('taco'), 'not even close!')
+
+
 
 
 if __name__ == '__main__':

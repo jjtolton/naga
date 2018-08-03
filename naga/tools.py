@@ -507,7 +507,7 @@ stateful transducer
 [1, 3, 5]
 """
 
-    return compose(reversed(fns))
+    return compose(list(reversed(fns)))
 
 
 def juxt(*fns):
